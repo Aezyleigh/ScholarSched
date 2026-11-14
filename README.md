@@ -59,6 +59,7 @@ ScholarSched/
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
+
 ## Security notes
 
 - The anon key is public by design. Data is protected by **Row Level Security** policies in
