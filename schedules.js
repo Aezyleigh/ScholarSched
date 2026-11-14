@@ -1,0 +1,555 @@
+const $ = (id) => document.getElementById(id);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null; // { id, name, role, teacher_id }
+let staffRows = [];     // schedules shown to the signed-in staff member
+let lookups = { programs: [], years: [], teachers: [], rooms: [] };
+let editingId = null;   // id of the schedule being edited, or null when creating
+
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_START = 7 * 60;   // room availability is shown between 7:00 AM ...
+const DAY_END = 20 * 60;    // ... and 8:00 PM
+
+function esc(value) {
+  const div = document.createElement('div');
+  div.textContent = value ?? '';
+  return div.innerHTML;
+}
+
+function to12h(time) {               // "08:00:00" -> "8:00 AM"
+  const [h, m] = time.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const minToTime = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
+const hoursOf = (s) => (toMin(s.end_time) - toMin(s.start_time)) / 60;
+const round1 = (n) => Math.round(n * 10) / 10;
+
+function sortSchedules(rows) {
+  return rows.sort((a, b) =>
+    DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.start_time.localeCompare(b.start_time));
+}
+
+function roleLabel(role) {
+  return { admin: 'Program Head', teacher: 'Teacher' }[role] || role;
+}
+
+/* ---------- views ---------- */
+
+function showLogin() {
+  currentUser = null;
+  $('app-view').hidden = true;
+  $('student-view').hidden = true;
+  $('login-view').hidden = false;
+}
+
+function showTab(name) {
+  ['schedules', 'reports'].forEach((t) => {
+    $(`tab-${t}`).hidden = t !== name;
+    document.querySelector(`[data-tab="${t}"]`).setAttribute('aria-selected', String(t === name));
+  });
+  if (name === 'reports') renderReport();
+}
+
+async function showApp(user) {
+  currentUser = user;
+  $('login-view').hidden = true;
+  $('student-view').hidden = true;
+  $('app-view').hidden = false;
+  $('user-label').textContent = `${user.name} (${roleLabel(user.role)})`;
+
+  const isAdmin = user.role === 'admin';
+  $('app-tabs').hidden = !isAdmin;
+  $('create-panel').hidden = !isAdmin;
+  document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = !isAdmin));
+  $('list-title').textContent = isAdmin ? 'All schedules' : 'My published schedule';
+  $('search-input').value = '';
+  resetForm();
+  showTab('schedules');
+
+  if (isAdmin) await loadLookups();
+  else await loadPeriodLabel();
+  await loadSchedules();
+}
+
+/* ---------- login / logout ---------- */
+
+async function loadProfile(authUser) {
+  const { data, error } = await sb
+    .from('profiles')
+    .select('name, role, teacher_id')
+    .eq('user_id', authUser.id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { id: authUser.id, ...data };
+}
+
+$('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = $('login-error');
+  errBox.hidden = true;
+
+  const { data, error } = await sb.auth.signInWithPassword({
+    email: $('login-email').value.trim(),
+    password: $('login-password').value,
+  });
+  if (error) {
+    errBox.textContent = 'Invalid email or password';
+    errBox.hidden = false;
+    return;
+  }
+
+  const profile = await loadProfile(data.user);
+  if (!profile) {
+    await sb.auth.signOut();
+    errBox.textContent = 'This account has no role assigned. Ask the Program Head.';
+    errBox.hidden = false;
+    return;
+  }
+  $('login-password').value = '';
+  showApp(profile);
+});
+
+$('logout-btn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  showStudent();
+});
+
+/* ---------- period label and dropdowns ---------- */
+
+async function loadPeriodLabel() {
+  const { data } = await sb
+    .from('scheduling_periods')
+    .select('academic_year, semester')
+    .eq('is_active', true)
+    .maybeSingle();
+  $('period-label').textContent = data
+    ? `${data.academic_year}, ${data.semester} Semester`
+    : 'No active scheduling period';
+}
+
+function fillSelect(id, rows, labelFn) {
+  $(id).innerHTML = rows
+    .map((r) => `<option value="${esc(r.id)}">${esc(labelFn(r))}</option>`)
+    .join('');
+}
+
+async function loadLookups() {
+  const [subjects, programs, years, teachers, rooms] = await Promise.all([
+    sb.from('subjects').select('id, subject_code, subject_name').order('subject_code'),
+    sb.from('programs').select('id, program_name').order('program_name'),
+    sb.from('year_levels').select('id, year_level').order('id'),
+    sb.from('teachers').select('id, teacher_name, max_load_hours').order('teacher_name'),
+    sb.from('rooms').select('id, room_name, is_online').order('room_name'),
+  ]);
+  lookups = {
+    programs: programs.data || [],
+    years: years.data || [],
+    teachers: teachers.data || [],
+    rooms: rooms.data || [],
+  };
+  fillSelect('f-subject', subjects.data || [], (r) => `${r.subject_code} – ${r.subject_name}`);
+  fillSelect('f-program', lookups.programs, (r) => r.program_name);
+  fillSelect('f-year', lookups.years, (r) => r.year_level);
+  fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
+  fillSelect('f-room', lookups.rooms, (r) => r.room_name);
+  // Report pickers
+  fillSelect('r-program', lookups.programs, (r) => r.program_name);
+  fillSelect('r-year', lookups.years, (r) => r.year_level);
+  fillSelect('r-teacher', lookups.teachers, (r) => r.teacher_name);
+  fillSelect('r-room', lookups.rooms, (r) => r.room_name);
+  await loadPeriodLabel();
+}
+
+/* ---------- schedule table (staff) ---------- */
+
+async function fetchStaffSchedules() {
+  if (currentUser.role === 'admin') {
+    const { data, error } = await sb
+      .from('schedules')
+      .select(`id, day, start_time, end_time, status,
+               subject_id, program_id, year_level_id, teacher_id, room_id,
+               subjects(subject_code, subject_name),
+               programs(program_name), year_levels(year_level),
+               teachers(teacher_name), rooms(room_name, is_online),
+               scheduling_periods!inner(is_active)`)
+      .eq('scheduling_periods.is_active', true);
+    if (error) return null;
+    return data.map((s) => ({
+      id: s.id, day: s.day, start_time: s.start_time, end_time: s.end_time, status: s.status,
+      subject_id: s.subject_id, program_id: s.program_id, year_level_id: s.year_level_id,
+      teacher_id: s.teacher_id, room_id: s.room_id,
+      subject_code: s.subjects.subject_code, subject_name: s.subjects.subject_name,
+      program_name: s.programs.program_name, year_level: s.year_levels.year_level,
+      teacher_name: s.teachers.teacher_name, room_name: s.rooms.room_name,
+      is_online: s.rooms.is_online,
+    }));
+  }
+  const { data, error } = await sb.from('teacher_schedule').select('*');
+  return error ? null : data;
+}
+
+async function loadSchedules() {
+  const rows = await fetchStaffSchedules();
+  if (!rows) {
+    staffRows = [];
+    $('schedule-body').innerHTML = '';
+    return;
+  }
+  staffRows = sortSchedules(rows);
+  renderStaffTable();
+  if (!$('tab-reports').hidden) renderReport();
+}
+
+function renderStaffTable() {
+  const isAdmin = currentUser.role === 'admin';
+  const q = $('search-input').value.trim().toLowerCase();
+  const rows = q
+    ? staffRows.filter((s) =>
+        [s.subject_code, s.subject_name, s.teacher_name, s.room_name, s.program_name, s.year_level, s.day, s.status]
+          .join(' ').toLowerCase().includes(q))
+    : staffRows;
+
+  $('schedule-body').innerHTML = rows.map((s) => `
+    <tr>
+      <td>${esc(s.subject_code)} – ${esc(s.subject_name)}</td>
+      <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
+      <td>${esc(s.teacher_name)}</td>
+      <td>${esc(s.room_name)}</td>
+      <td>${esc(s.day)}</td>
+      <td>${to12h(s.start_time)} – ${to12h(s.end_time)}</td>
+      <td><span class="badge ${esc(s.status)}">${esc(s.status)}</span></td>
+      ${isAdmin ? `<td class="actions">${actionButtons(s)}</td>` : ''}
+    </tr>`).join('');
+
+  const empty = $('empty-msg');
+  empty.hidden = rows.length > 0;
+  if (staffRows.length === 0) {
+    empty.textContent = isAdmin ? 'No schedules yet. Create one above.' : 'Nothing is published for you yet.';
+  } else {
+    empty.textContent = `No schedule matches "${$('search-input').value.trim()}".`;
+  }
+}
+
+$('search-input').addEventListener('input', renderStaffTable);
+
+function actionButtons(s) {
+  const edit = `<button data-id="${s.id}" data-action="edit">Edit</button>`;
+  if (s.status === 'DRAFT') {
+    return `${edit}
+            <button data-id="${s.id}" data-action="publish" class="primary">Publish</button>
+            <button data-id="${s.id}" data-action="delete" class="danger">Delete</button>`;
+  }
+  return `${edit}
+          <button data-id="${s.id}" data-action="unpublish">Unpublish</button>`;
+}
+
+async function changeStatus(id, action) {
+  let result;
+  if (action === 'publish') {
+    result = await sb.from('schedules').update({ status: 'PUBLISHED' }).eq('id', id).eq('status', 'DRAFT').select();
+    return { ok: !result.error && result.data.length > 0, message: 'Published', error: 'Only drafts can be published' };
+  }
+  if (action === 'unpublish') {
+    result = await sb.from('schedules').update({ status: 'DRAFT' }).eq('id', id).eq('status', 'PUBLISHED').select();
+    return { ok: !result.error && result.data.length > 0, message: 'Returned to draft', error: 'Only published schedules can be unpublished' };
+  }
+  result = await sb.from('schedules').delete().eq('id', id).eq('status', 'DRAFT').select();
+  return { ok: !result.error && result.data.length > 0, message: 'Draft deleted', error: 'Only drafts can be deleted. Unpublish it first.' };
+}
+
+$('schedule-body').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const { id, action } = btn.dataset;
+
+  if (action === 'edit') return startEdit(Number(id));
+  if (action === 'delete' && !confirm('Delete this draft schedule?')) return;
+
+  btn.disabled = true;
+  const res = await changeStatus(Number(id), action);
+  showFormAlert(res.ok ? 'ok' : 'error', res.ok ? res.message : res.error);
+  loadSchedules();
+});
+
+/* ---------- create and edit schedule ---------- */
+
+function showFormAlert(type, message, list = []) {
+  const box = $('form-alert');
+  box.className = `alert ${type}`;
+  box.innerHTML = esc(message) +
+    (list.length ? `<ul>${list.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '');
+  box.hidden = false;
+}
+
+function resetForm() {
+  editingId = null;
+  $('schedule-form').reset();
+  $('form-title').textContent = 'Create schedule';
+  $('form-submit').textContent = 'Check conflicts and save as draft';
+  $('form-cancel').hidden = true;
+}
+
+function startEdit(id) {
+  const s = staffRows.find((r) => r.id === id);
+  if (!s) return;
+  editingId = id;
+  $('f-subject').value = s.subject_id;
+  $('f-program').value = s.program_id;
+  $('f-year').value = s.year_level_id;
+  $('f-teacher').value = s.teacher_id;
+  $('f-room').value = s.room_id;
+  $('f-day').value = s.day;
+  $('f-start').value = s.start_time.slice(0, 5);
+  $('f-end').value = s.end_time.slice(0, 5);
+  $('form-title').textContent = `Edit schedule: ${s.subject_code}`;
+  $('form-submit').textContent = 'Check conflicts and save changes';
+  $('form-cancel').hidden = false;
+  $('form-alert').hidden = true;
+  $('create-panel').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('form-cancel').addEventListener('click', () => {
+  resetForm();
+  $('form-alert').hidden = true;
+});
+
+$('schedule-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('form-alert').hidden = true;
+
+  const args = {
+    p_subject_id: Number($('f-subject').value),
+    p_program_id: Number($('f-program').value),
+    p_year_level_id: Number($('f-year').value),
+    p_teacher_id: Number($('f-teacher').value),
+    p_room_id: Number($('f-room').value),
+    p_day: $('f-day').value,
+    p_start: $('f-start').value,
+    p_end: $('f-end').value,
+  };
+  const wasEditing = editingId !== null;
+  const { data, error } = wasEditing
+    ? await sb.rpc('update_schedule', { p_id: editingId, ...args })
+    : await sb.rpc('create_schedule', args);
+
+  if (error) {
+    showFormAlert('error', 'Could not save the schedule. Please try again.');
+  } else if (data.ok) {
+    resetForm();
+    showFormAlert('ok', wasEditing ? 'Changes saved.' : 'Saved as draft.');
+    loadSchedules();
+  } else if (data.conflicts) {
+    showFormAlert('error', 'Not saved. Change the details and check again.', data.conflicts);
+  } else {
+    showFormAlert('error', data.error || 'Could not save the schedule');
+  }
+});
+
+/* ---------- reports (Program Head) ---------- */
+
+$('app-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tab]');
+  if (btn) showTab(btn.dataset.tab);
+});
+['r-type', 'r-program', 'r-year', 'r-teacher', 'r-room'].forEach((id) =>
+  $(id).addEventListener('change', renderReport));
+$('r-print').addEventListener('click', () => window.print());
+
+const COLS = {
+  subject: ['Subject', (s) => `${esc(s.subject_code)} – ${esc(s.subject_name)}`],
+  group: ['Program and year', (s) => `${esc(s.program_name)}, ${esc(s.year_level)}`],
+  teacher: ['Teacher', (s) => esc(s.teacher_name)],
+  room: ['Room', (s) => esc(s.room_name)],
+  day: ['Day', (s) => esc(s.day)],
+  time: ['Time', (s) => `${to12h(s.start_time)} – ${to12h(s.end_time)}`],
+  status: ['Status', (s) => `<span class="badge ${esc(s.status)}">${esc(s.status)}</span>`],
+};
+
+function scheduleTable(rows, keys) {
+  if (rows.length === 0) return '<p class="muted">No classes scheduled for this selection.</p>';
+  return `<div class="table-wrap"><table>
+    <thead><tr>${keys.map((k) => `<th>${COLS[k][0]}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((s) => `<tr>${keys.map((k) => `<td>${COLS[k][1](s)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// Free time between DAY_START and DAY_END, given a room's occupied slots
+function freeSlots(roomRows) {
+  const busy = roomRows.map((s) => [toMin(s.start_time), toMin(s.end_time)]).sort((a, b) => a[0] - b[0]);
+  const free = [];
+  let cursor = DAY_START;
+  for (const [start, end] of busy) {
+    if (start > cursor) free.push([cursor, Math.min(start, DAY_END)]);
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < DAY_END) free.push([cursor, DAY_END]);
+  return free.filter(([a, b]) => b > a);
+}
+
+const slotText = ([a, b]) => `${to12h(minToTime(a))} – ${to12h(minToTime(b))}`;
+
+function renderReport() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const type = $('r-type').value;
+  $('r-program-wrap').hidden = type !== 'class';
+  $('r-year-wrap').hidden = type !== 'class';
+  $('r-teacher-wrap').hidden = type !== 'faculty';
+  $('r-room-wrap').hidden = !(type === 'room' || type === 'availability');
+
+  const out = $('report-output');
+  const meta = `<p class="muted report-meta">${esc($('period-label').textContent)} · Generated ${esc(new Date().toLocaleDateString())}</p>`;
+  const pick = (id, list, key) => list.find((x) => String(x.id) === $(id).value);
+
+  if (type === 'class') {
+    const program = pick('r-program', lookups.programs);
+    const year = pick('r-year', lookups.years);
+    if (!program || !year) { out.innerHTML = ''; return; }
+    const rows = staffRows.filter((s) => String(s.program_id) === String(program.id) && String(s.year_level_id) === String(year.id));
+    out.innerHTML = `<h3>Class schedule: ${esc(program.program_name)}, ${esc(year.year_level)}</h3>${meta}` +
+      scheduleTable(rows, ['subject', 'teacher', 'room', 'day', 'time', 'status']);
+  } else if (type === 'faculty') {
+    const teacher = pick('r-teacher', lookups.teachers);
+    if (!teacher) { out.innerHTML = ''; return; }
+    const rows = staffRows.filter((s) => String(s.teacher_id) === String(teacher.id));
+    const total = rows.reduce((n, s) => n + hoursOf(s), 0);
+    out.innerHTML = `<h3>Faculty schedule: ${esc(teacher.teacher_name)}</h3>${meta}` +
+      `<p><strong>Teaching load:</strong> ${round1(total)} of ${esc(teacher.max_load_hours)} hours per week</p>` +
+      scheduleTable(rows, ['subject', 'group', 'room', 'day', 'time', 'status']);
+  } else if (type === 'room') {
+    const room = pick('r-room', lookups.rooms);
+    if (!room) { out.innerHTML = ''; return; }
+    const rows = staffRows.filter((s) => String(s.room_id) === String(room.id));
+    out.innerHTML = `<h3>Room schedule: ${esc(room.room_name)}</h3>${meta}` +
+      scheduleTable(rows, ['subject', 'group', 'teacher', 'day', 'time', 'status']);
+  } else {
+    const room = pick('r-room', lookups.rooms);
+    if (!room) { out.innerHTML = ''; return; }
+    if (room.is_online) {
+      out.innerHTML = `<h3>Room availability: ${esc(room.room_name)}</h3>${meta}` +
+        '<p class="alert ok">Online classes do not use a physical room, so this room is always available.</p>';
+      return;
+    }
+    const roomRows = staffRows.filter((s) => String(s.room_id) === String(room.id));
+    const body = DAY_ORDER.map((day) => {
+      const dayRows = sortSchedules(roomRows.filter((s) => s.day === day));
+      const occupied = dayRows.map((s) => `${to12h(s.start_time)} – ${to12h(s.end_time)} (${esc(s.subject_code)})`).join('<br>') || '<span class="muted">None</span>';
+      const free = freeSlots(dayRows).map(slotText).join('<br>') || '<span class="muted">Fully booked</span>';
+      return `<tr><td>${day}</td><td>${occupied}</td><td>${free}</td></tr>`;
+    }).join('');
+    out.innerHTML = `<h3>Room availability: ${esc(room.room_name)}</h3>${meta}
+      <p class="muted">Free time is shown between ${slotText([DAY_START, DAY_END])}. Draft and published classes both count as occupied.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Day</th><th>Occupied</th><th>Free</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>`;
+  }
+}
+
+/* ---------- student view (no login) ---------- */
+
+async function showStudent() {
+  currentUser = null;
+  $('app-view').hidden = true;
+  $('login-view').hidden = true;
+  $('student-view').hidden = false;
+
+  const [period, programs, years] = await Promise.all([
+    sb.from('scheduling_periods').select('academic_year, semester').eq('is_active', true).maybeSingle(),
+    sb.from('programs').select('id, program_name').order('program_name'),
+    sb.from('year_levels').select('id, year_level').order('id'),
+  ]);
+
+  $('student-period').textContent = period.data
+    ? `${period.data.academic_year}, ${period.data.semester} Semester`
+    : '';
+
+  const withPlaceholder = (label, rows, labelKey) =>
+    `<option value="">${label}</option>` +
+    (rows || []).map((r) => `<option value="${esc(r.id)}">${esc(r[labelKey])}</option>`).join('');
+
+  $('s-program').innerHTML = withPlaceholder('Select program', programs.data, 'program_name');
+  $('s-year').innerHTML = withPlaceholder('Select year level', years.data, 'year_level');
+
+  // Remember the last choice on this device (convenience only)
+  try {
+    const saved = JSON.parse(localStorage.getItem('scholarsched_student') || '{}');
+    if (saved.program) $('s-program').value = saved.program;
+    if (saved.year) $('s-year').value = saved.year;
+  } catch (_) { /* storage unavailable */ }
+
+  loadStudentSchedule();
+}
+
+async function loadStudentSchedule() {
+  const program = $('s-program').value;
+  const year = $('s-year').value;
+  // Remove characters that have a special meaning in the search filter
+  const term = $('s-search').value.replace(/[%,()*\\]/g, ' ').trim();
+  const body = $('student-body');
+  const empty = $('student-empty');
+
+  try {
+    localStorage.setItem('scholarsched_student', JSON.stringify({ program, year }));
+  } catch (_) { /* storage unavailable */ }
+
+  let query = sb.from('student_schedule').select('*');
+  if (term.length >= 2) {
+    query = query.or(`subject_code.ilike.%${term}%,subject_name.ilike.%${term}%`);
+  } else if (program && year) {
+    query = query.eq('program_id', Number(program)).eq('year_level_id', Number(year));
+  } else {
+    body.innerHTML = '';
+    empty.textContent = 'Choose your program and year level, or search for a subject.';
+    empty.hidden = false;
+    return;
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    body.innerHTML = '';
+    empty.textContent = 'Could not load the schedule.';
+    empty.hidden = false;
+    return;
+  }
+
+  sortSchedules(data);
+  body.innerHTML = data.map((s) => `
+    <tr>
+      <td>${esc(s.subject_code)} – ${esc(s.subject_name)}</td>
+      <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
+      <td>${esc(s.teacher_name)}</td>
+      <td>${esc(s.room_name)}</td>
+      <td>${esc(s.day)}</td>
+      <td>${to12h(s.start_time)} – ${to12h(s.end_time)}</td>
+    </tr>`).join('');
+
+  empty.hidden = data.length > 0;
+  empty.textContent = term.length >= 2
+    ? `No published class matches "${term}".`
+    : 'No published schedule for this program and year level yet.';
+}
+
+let searchTimer;
+$('s-search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadStudentSchedule, 300);
+});
+$('s-program').addEventListener('change', loadStudentSchedule);
+$('s-year').addEventListener('change', loadStudentSchedule);
+$('show-login-btn').addEventListener('click', showLogin);
+$('back-to-student').addEventListener('click', showStudent);
+
+/* ---------- start ---------- */
+
+(async function init() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    const profile = await loadProfile(data.session.user);
+    if (profile) return showApp(profile);
+    await sb.auth.signOut();
+  }
+  showStudent();
+})();
