@@ -1,7 +1,3 @@
--- ScholarSched v2 migration
--- Run ONCE in the Supabase SQL Editor, after schema.sql and seed.sql.
--- Safe to run again if something fails halfway.
-
 -- ---------- 1. Online classes (no room conflict) ----------
 alter table public.rooms     add column if not exists is_online boolean not null default false;
 alter table public.schedules add column if not exists is_online boolean not null default false;
