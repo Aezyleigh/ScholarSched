@@ -430,6 +430,54 @@ function showFormAlert(type, message, list = []) {
   box.hidden = false;
 }
 
+function friendlyScheduleMessage(value) {
+  const message = String(value || '').trim();
+  if (!message) return 'No details were returned. Refresh the page and try again.';
+  if (/^Classes cannot start before 8:00 AM/i.test(message)) return 'Classes must start at or after 8:00 AM.';
+  if (/^Each class must be exactly 2 hours 30 minutes/i.test(message)) return 'Each class must last exactly 2 hours 30 minutes. The end time is calculated from the start time.';
+  if (/^Faculty availability:/i.test(message)) {
+    const match = message.match(/^Faculty availability:\s*(.+?) is not available for the full class on (.+?)\.?$/i);
+    return match
+      ? `${match[1]} is not available for the full class on ${match[2]}. Choose a time within their availability.`
+      : 'The selected teacher is not available for the full class. Choose another teacher or time.';
+  }
+  if (/^Break required:/i.test(message)) {
+    const cohort = message.match(/^Break required: this Program and Year Level needs at least 30 minutes between classes on (.+?)\.?$/i);
+    if (cohort) return `This program and year group needs at least 30 minutes between classes on ${cohort[1]}. Move this class farther from the group's other class.`;
+    const teacher = message.match(/^Break required:\s*(.+?) needs at least 30 minutes between classes on (.+?)\.?$/i);
+    if (teacher) return `${teacher[1]} needs at least 30 minutes between classes on ${teacher[2]}. Move this class farther from their other class.`;
+  }
+  if (/^Break Time:/i.test(message)) {
+    const match = message.match(/^Break Time: this class overlaps the (.+?) \((.+)\)\.?$/i);
+    return match
+      ? `This class overlaps the ${match[1]} (${match[2]}). Choose a time outside that break.`
+      : 'This class overlaps a scheduled break. Choose a different time.';
+  }
+  if (/^Max Load:/i.test(message)) {
+    const match = message.match(/^Max Load:\s*(.+?) would have (.+?) hours per week, but the limit is (.+?)\.?$/i);
+    return match
+      ? `${match[1]}'s weekly teaching load would be ${match[2]} hours, above the ${match[3]}-hour limit. Choose another teacher or reduce their schedule.`
+      : 'The selected teacher would exceed their weekly teaching-load limit. Choose another teacher or time.';
+  }
+  if (/^Schedule Conflict:/i.test(message)) {
+    const detail = message.replace(/^Schedule Conflict:\s*/i, '');
+    if (/this time was just taken/i.test(detail)) return 'Another schedule has taken this time. Refresh the schedule list and choose a different time.';
+    const times = detail.match(/ from (.+?)\s*[^A-Za-z0-9\s:]+\s*(.+?)\.?$/);
+    const room = detail.match(/^(.+?) is already occupied on (.+?) from /i);
+    if (room) return `Room ${room[1]} is booked on ${room[2]}${times ? ` from ${times[1]} to ${times[2]}` : ' at that time'}. Choose another room or time.`;
+    const teacher = detail.match(/^(.+?) already has a class on (.+?) from /i);
+    if (teacher) return `${teacher[1]} already has a class on ${teacher[2]}${times ? ` from ${times[1]} to ${times[2]}` : ' at that time'}. Choose another time or teacher.`;
+    const cohort = detail.match(/^this Program and Year Level already has a class on (.+?) from /i);
+    if (cohort) return `This program and year group already has a class on ${cohort[1]}${times ? ` from ${times[1]} to ${times[2]}` : ' at that time'}. Choose another time.`;
+    return `A schedule conflict was found: ${detail}`;
+  }
+  if (/^No active scheduling period/i.test(message)) return 'There is no active scheduling period. Ask the Program Head to activate one before saving.';
+  if (/^One of the selected items does not exist/i.test(message)) return 'A selected course, program, year, teacher, or room is no longer available. Refresh the page and try again.';
+  if (/^Invalid day or time/i.test(message)) return 'The selected day or time is invalid. Check the schedule details and try again.';
+  if (message === 'Schedule Conflict') return 'Another class may already use this room, teacher, or student group at that time. Choose a different time or resource.';
+  return message;
+}
+
 function resetForm() {
   editingId = null;
   editingPairId = null;
@@ -512,15 +560,15 @@ $('schedule-form').addEventListener('submit', async (e) => {
 
   if (error) {
     console.error('Schedule save failed:', error);
-    showFormAlert('error', `Could not save the schedule: ${error.message || 'Supabase returned no error details.'}`);
+    showFormAlert('error', 'The schedule was not saved. Reason:', [friendlyScheduleMessage(error.message)]);
   } else if (data.ok) {
     resetForm();
     showFormAlert('ok', wasEditing ? 'Changes saved.' : 'Saved as draft.');
     loadSchedules();
   } else if (data.conflicts) {
-    showFormAlert('error', 'Not saved. Change the details and check again.', data.conflicts);
+    showFormAlert('error', 'The schedule was not saved. Fix the following:', data.conflicts.map(friendlyScheduleMessage));
   } else {
-    showFormAlert('error', data.error || 'Could not save the schedule');
+    showFormAlert('error', 'The schedule was not saved. Reason:', [friendlyScheduleMessage(data.error)]);
   }
 });
 
