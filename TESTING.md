@@ -1,8 +1,9 @@
 # Testing ScholarSched
 
 ScholarSched has no automated test suite, so use the browser and read-only Supabase checks.
-Apply `migration_v3.sql` only in a test project first; do not rerun v2 or modify production data
-while verifying this feature. The migration is a one-time database change, not a browser test.
+Apply `migration_v4.sql` after v2 and v3 in a disposable test project first. Do not run write tests
+or copy periods in production while verifying these features. The migration is a one-time database
+change; inspect existing duplicate periods before applying it.
 
 | Check | What it proves | Tool |
 | --- | --- | --- |
@@ -105,6 +106,34 @@ Maria with BS Information Technology 2nd Year.
 | F8 | Add/remove a curriculum assignment | Schedule course options reflect the assignment; existing schedules remain |
 | F9 | Open the all-faculty report | Each faculty member shows classes, weekly load/limit, and Mon-Sat availability |
 | F10 | Edit a faculty availability row in Supabase, then create outside its window | Schedule is rejected |
+
+
+
+### 2.7 Rooms, periods, timetable, exports, bulk actions, and suggestions (migration v4)
+
+Run these checks in a disposable Supabase project with migration v4 applied. Do not perform the
+write/copy checks against production.
+
+| ID | Test | Expected |
+| --- | --- | --- |
+| R1 | Program Head adds, edits, and removes an unused room | Room appears in the schedule picker; duplicate names are rejected; referenced rooms cannot be deleted |
+| PER1 | Start a period with an invalid academic year or date range | The app rejects the input and does not change the active period |
+| PER2 | Start a duplicate year/semester | The app reports the duplicate; only one period remains |
+| PER3 | Close the active period, then start another | There is briefly no active period after close; new period becomes active when started |
+| PER4 | Copy a valid prior period | All copied rows are drafts; paired days remain paired; student/teacher views only show published rows |
+| PER5 | Copy a period containing a conflict or invalid assignment | Copy fails atomically; no new period or partial copied schedules remain and the old active period stays active |
+| PER6 | Activate an existing period with invalid schedules | Activation fails and the previous active period remains active |
+| T1 | View student and teacher schedules as a weekly timetable on desktop and a narrow phone viewport | Mon-Sat and time labels are readable; horizontal scrolling stays within the grid; only that user's published rows appear |
+| E1 | Export student, teacher, and Program Head schedules as CSV | Download contains only the current selection/active period; cells are quoted and formula-leading values are neutralized |
+| E2 | Export a report as CSV/PDF | Export columns and rows match the currently displayed report |
+| E3 | Download PDF | A PDF downloads with the selected schedule/report title and data |
+| E4 | Export calendar with a configured period date range | Each class repeats weekly on the right weekday in Manila time and stops at the period end date |
+| E5 | Export calendar before setting period dates | App explains that the active period needs start/end dates |
+| B1 | Select multiple drafts and publish; select published rows and unpublish | Confirmation appears; selected statuses change; paired days stay synchronized |
+| B2 | Select rows with mixed statuses and use one bulk action | Only rows eligible for that action change; no drafts are accidentally unpublished or vice versa |
+| C1 | Save into a room/teacher/cohort conflict | Save is blocked and the app offers available rooms and alternative start times |
+| C2 | Try suggestions outside teacher availability or across lunch/load limits | Suggestions exclude times that fail the shared schedule validator |
+| ACC1 | As a teacher or anonymous student, attempt room/period writes, bulk status changes, or suggestions | RLS/RPC authorization blocks every write/action |
 
 ## 3. Security tests (browser console)
 
