@@ -28,14 +28,21 @@
           <label>Year level <select id="s-year"></select></label>
           <label>Or search any subject <input type="search" id="s-search" placeholder="Code or name, e.g. CS101"></label>
         </div>
-        <div class="table-wrap">
+        <div class="toolbar view-tools">
+          <button type="button" id="s-table-view" aria-pressed="true">List</button>
+          <button type="button" id="s-week-view" aria-pressed="false">Weekly timetable</button>
+          <button type="button" id="s-export-csv">Download CSV</button>
+          <button type="button" id="s-export-ics">Download calendar (.ics)</button>
+          <button type="button" id="s-export-pdf">Download PDF</button>
+        </div>
+        <div id="student-export-alert" class="alert" role="alert" hidden></div>
+        <div id="student-table-view" class="table-wrap">
           <table>
-            <thead>
-              <tr><th>Subject</th><th>Program and year</th><th>Teacher</th><th>Room</th><th>Day</th><th>Time</th></tr>
-            </thead>
+            <thead><tr><th>Subject</th><th>Program and year</th><th>Teacher</th><th>Room</th><th>Day</th><th>Time</th></tr></thead>
             <tbody id="student-body"></tbody>
           </table>
         </div>
+        <div id="student-weekly-view" class="weekly-view" hidden></div>
         <p id="student-empty" class="muted">Choose your program and year level.</p>
       </section>
     </main>
@@ -77,6 +84,7 @@
         <button type="button" data-tab="schedules" aria-selected="true">Schedules</button>
         <button type="button" data-tab="reports" aria-selected="false">Reports</button>
         <button type="button" data-tab="curriculum" aria-selected="false">Curriculum</button>
+        <button type="button" data-tab="setup" aria-selected="false">Rooms &amp; periods</button>
       </nav>
 
       <div id="tab-schedules">
@@ -109,13 +117,25 @@
 
         <section>
           <h2 id="list-title">Schedules</h2>
-          <div class="toolbar">
+          <div class="toolbar view-tools">
             <label>Search schedules <input type="search" id="search-input" placeholder="Subject, teacher, room, day..."></label>
+            <button type="button" id="staff-list-toggle" aria-pressed="true">List</button>
+            <button type="button" id="staff-weekly-toggle" aria-pressed="false">Weekly timetable</button>
+            <button type="button" id="staff-export-csv">Download CSV</button>
+            <button type="button" id="staff-export-ics">Download calendar (.ics)</button>
+            <button type="button" id="staff-export-pdf">Download PDF</button>
           </div>
-          <div class="table-wrap">
+          <div class="toolbar admin-only" id="bulk-tools">
+            <button type="button" id="bulk-publish" class="primary">Publish selected drafts</button>
+            <button type="button" id="bulk-unpublish">Unpublish selected</button>
+            <span id="bulk-count" class="muted">0 selected</span>
+          </div>
+          <div id="staff-export-alert" class="alert" role="alert" hidden></div>
+          <div id="staff-table-view" class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th class="admin-only"><input type="checkbox" id="select-all-schedules" aria-label="Select visible schedules"></th>
                   <th>Subject</th><th>Program and year</th><th>Teacher</th><th>Room</th>
                   <th>Day</th><th>Time</th><th>Status</th><th class="admin-only">Actions</th>
                 </tr>
@@ -123,6 +143,7 @@
               <tbody id="schedule-body"></tbody>
             </table>
           </div>
+          <div id="staff-weekly-view" class="weekly-view" hidden></div>
           <p id="empty-msg" class="muted" hidden></p>
         </section>
       </div>
@@ -144,8 +165,12 @@
             <label id="r-year-wrap">Year level <select id="r-year"></select></label>
             <label id="r-teacher-wrap" hidden>Teacher <select id="r-teacher"></select></label>
             <label id="r-room-wrap" hidden>Room <select id="r-room"></select></label>
+            <button type="button" id="r-export-csv">Download report CSV</button>
+            <button type="button" id="r-export-ics">Download report calendar (.ics)</button>
+            <button type="button" id="r-export-pdf">Download report PDF</button>
             <button type="button" id="r-print">Print report</button>
           </div>
+          <div id="r-export-alert" class="alert" role="alert" hidden></div>
           <div id="report-output"></div>
         </section>
       </div>
@@ -220,10 +245,41 @@
           <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Max weekly load</th><th>Actions</th></tr></thead><tbody id="teacher-body"></tbody></table></div>
         </section>
       </div>
+
+      <div id="tab-setup" hidden>
+        <section>
+          <h2>Rooms</h2>
+          <form id="room-form" class="toolbar">
+            <input type="hidden" id="room-id">
+            <label>Room name <input id="room-name" required maxlength="120"></label>
+            <label class="check-label"><input type="checkbox" id="room-online"> Online room</label>
+            <button type="submit" id="room-submit" class="primary">Add room</button>
+            <button type="button" id="room-cancel" hidden>Cancel edit</button>
+          </form>
+          <div id="room-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Room</th><th>Type</th><th>Actions</th></tr></thead><tbody id="room-body"></tbody></table></div>
+        </section>
+        <section>
+          <h2>Start a scheduling period</h2>
+          <form id="period-form" class="grid">
+            <label>Academic year <input id="period-year" placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
+            <label>Semester <select id="period-semester" required><option value="1st">1st</option><option value="2nd">2nd</option><option value="Summer">Summer</option></select></label>
+            <label>Starts on <input id="period-start" type="date" required></label>
+            <label>Ends on <input id="period-end" type="date" required></label>
+            <label>Copy schedules from <select id="period-copy"><option value="">Start empty</option></select></label>
+            <div class="form-actions"><button type="submit" id="period-submit" class="primary">Start period</button>
+              <button type="button" id="period-cancel" hidden>Cancel edit</button></div>
+          </form>
+          <p class="muted">Copied schedules are revalidated and start as drafts. Set accurate dates here for calendar exports.</p>
+          <div id="period-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Academic year</th><th>Semester</th><th>Date range</th><th>Status</th><th>Actions</th></tr></thead><tbody id="period-body"></tbody></table></div>
+        </section>
+      </div>
     </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/schedules.js"></script>
 </body>

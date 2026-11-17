@@ -1,18 +1,18 @@
 # ScholarSched System Overview
 
-**Review date:** 2026-11-17  
-**Reviewed branch:** `codex/scholarsched-scheduling-features`  
-**Reviewed commit:** `efb3a27 Make schedule conflict alerts clearer`  
-**Repository state:** Clean at review time.  
-**Scope:** Read-only review of the current checkout. This file is the only file created by this review; no application code, database schema, or Supabase project was changed.
+**Review date:** 2026-11-17
+**Reviewed branch:** `codex/scholarsched-scheduling-features`
+**Reviewed commit:** `753af80 Adjust course form spacing`
+**Repository state:** Feature implementation in progress; changes are uncommitted.
+**Scope:** Feature implementation and source review. Database changes are provided as migration v4 and have not been applied to a Supabase project.
 
 ## Executive summary
 
 ScholarSched is a small static web application for manually building and publishing college schedules. The browser uses Supabase Auth and the Supabase JavaScript client directly; PostgreSQL functions, triggers, constraints, views, and Row Level Security provide the backend rules. There is no separate application server, build pipeline, or automated test runner in the repository.
 
-The source now includes the recent v2 online-room and break/load changes, v3 scheduling rules, paired-day schedules, a curriculum editor, faculty reports, and friendlier conflict messages. The main user journeys are implemented in the browser and SQL scripts. The most important remaining concerns are that some rules are enforced only by the UI/RPC path rather than as database relationships, paired-row invariants can be broken by direct admin table writes, errors while loading schedules/lookups are mostly hidden, and SQL migration history is maintained as standalone files rather than standard tracked Supabase migrations.
+The feature branch now also includes Program Head room/period management, atomic period copying, a weekly timetable for students and teachers, CSV/PDF/calendar exports, bulk publish controls, and room/time suggestions. The v4 database migration is required for period lifecycle/copy RPCs and conflict suggestions. The front end is static HTML/JavaScript and talks directly to Supabase; the current work has not been applied to a live or test Supabase project.
 
-The repository is suitable for carefully tested incremental development, but changes to scheduling and curriculum should continue to be tested against a non-production Supabase project before release. This review did not connect to the live project or execute SQL.
+The implementation should be verified against a disposable Supabase project before release. SQL migration history remains a sequence of standalone scripts rather than a standard Supabase migrations directory.
 
 ## System architecture and stack
 
@@ -20,38 +20,39 @@ The repository is suitable for carefully tested incremental development, but cha
 - **Backend:** Supabase Auth and PostgreSQL accessed directly from `public/js/schedules.js` using the UMD Supabase JS client loaded from jsDelivr (`@supabase/supabase-js@2.45.4`).
 - **Authorization:** `profiles.role` identifies `admin` (Program Head) and `teacher`; database RLS and security-checked RPCs enforce access. Students are anonymous and have no account.
 - **Hosting:** Static-host compatible. The root `index.html` redirects to `public/`.
-- **Dependencies and tests:** No `package.json`, lockfile, build system, test runner, or CI workflow is present. Styling and fonts are loaded from Google Fonts; the Supabase client is loaded from jsDelivr.
+- **Dependencies and tests:** No `package.json`, lockfile, build system, test runner, or CI workflow is present. Fonts and the Supabase client are loaded from CDNs; jsPDF is pinned from jsDelivr for PDF downloads.
 - **Configuration:** `public/js/config.js` contains the Supabase URL and the public anon key. The anon key is intended to be present in browser code; data protection depends on RLS. No service-role key was found in the inspected application configuration.
 
 ### Request flow
 
 1. `public/index.html` loads the Supabase client, `config.js`, and `schedules.js`.
 2. `schedules.js` checks the current Supabase Auth session. Anonymous users see the published student view. Staff sessions are matched to a `profiles` row and shown the teacher or Program Head view.
-3. The JavaScript performs reads and curriculum CRUD through Supabase PostgREST. Schedule creation/editing calls SQL RPC functions; publishing, unpublishing, and deleting drafts use table updates/deletes.
-4. PostgreSQL RLS limits direct table/view access. SQL functions validate schedule rules; database exclusion constraints and the v3 trigger provide a second enforcement layer.
+3. The JavaScript performs lookup and catalog CRUD through Supabase PostgREST. Schedule writes and period lifecycle/copy/suggestion checks use SQL RPC functions; status changes use RLS-protected table updates.
+4. PostgreSQL RLS limits direct table/view access. SQL functions validate schedule rules; database constraints, the schedule trigger, and v4 period locks provide a second enforcement layer.
 
 ## Project structure and important files
 
 | File | Responsibility |
 | --- | --- |
 | `index.html` | Root redirect to `public/`. |
-| `public/index.html` | Student view, staff login, schedule form/table, reports and curriculum interface. |
+| `public/index.html` | Student view, staff login, schedule form/table, reports, curriculum, and room/period setup interface. |
 | `public/js/config.js` | Supabase project URL and public anon key. |
-| `public/js/schedules.js` | Application startup, login/session handling, lookups, schedule CRUD, paired schedules, curriculum editing, reports, and student search. This is the main application module (795 lines). |
+| `public/js/schedules.js` | Application startup, login/session handling, catalog/period CRUD, schedules, grid views, exports, reports, bulk actions, and suggestions. |
 | `public/css/styles.css` | Layout, colors, form controls, tables, alerts, responsive and print styles. |
 | `supabase/schema.sql` | Initial tables, relationships, constraints, RLS policies, views, helper functions, and initial `create_schedule` RPC. |
 | `supabase/migration_v2.sql` | Online-class support, fixed breaks, teacher load limit, schedule validation/RPC updates, and the student view update. |
 | `supabase/migration_v3.sql` | Faculty availability, curriculum assignments, schedule-pair support, v3 validation and triggers. |
+| `supabase/migration_v4.sql` | Period dates/lifecycle, atomic schedule copying, and conflict suggestions. |
 | `supabase/seed.sql` | Sample active period, programs, years, courses, teachers, and rooms. |
 | `supabase/users.sql` | Creates profile-role links for Auth users matched by email. |
-| `README.md` | Feature and setup summary. Its project tree does not list both migration files, although v3 is mentioned later. |
+| `README.md` | Feature and setup summary, including migration order and deployment notes. |
 | `TESTING.md` | Manual browser, role, SQL-read-only, and Postman checklist. It explicitly says there is no automated test suite. |
 
 ## Database model and relationships
 
 The SQL source defines these tables and relationships:
 
-- `scheduling_periods`: academic year, semester (`1st`, `2nd`, `Summer`), active flag. A partial unique index permits at most one active period.
+- `scheduling_periods`: academic year, semester (`1st`, `2nd`, `Summer`), active flag, and optional v4 start/end dates. Unique by year+semester; a partial unique index permits at most one active period.
 - `programs`, `year_levels`: lookup tables with unique names.
 - `subjects`: unique course code, name, positive smallint units, and free-text prerequisite.
 - `teachers`: name, optional email, legacy free-text `availability`; v2 adds `max_load_hours` (default 24).
@@ -62,7 +63,7 @@ The SQL source defines these tables and relationships:
 - `teacher_availability` (v3): one row per teacher/day, with start and end times. The primary key limits the model to one window per faculty member per day.
 - `curriculum_courses` (v3): subject/program/year/semester mapping, unique for each combination.
 
-`supabase/schema.sql` adds foreign keys and checks, including valid days/status, positive course units, end after start, and GiST exclusion constraints preventing overlapping room, teacher, and program/year schedules in one period. v2 changes the room exclusion constraint so concurrent online schedules may share the virtual room. v3 adds a shared validator and a transaction advisory lock for active-period schedule writes.
+`supabase/schema.sql` adds foreign keys and checks, including valid days/status, positive course units, end after start, and GiST exclusion constraints preventing overlapping room, teacher, and program/year schedules in one period. v2 changes the room exclusion constraint so concurrent online schedules may share the virtual room. v3 adds a shared validator and a transaction advisory lock for schedule writes. v4 serializes active-period transitions, validates periods before activation, and copies source schedules as drafts in one transaction.
 
 The v3 migration seeds Monday-Saturday 08:00-17:00 availability for existing teachers and adds an insert trigger to seed the same defaults for future teachers. It backfills curriculum mappings from schedules in the active period. Those inserts use conflict-ignore behavior; existing schedule rows are not rewritten by the backfill.
 
@@ -105,12 +106,17 @@ Statuses below describe source implementation, not live end-to-end verification.
 | 2.5-hour duration, earliest 8:00 AM, break and 30-minute gaps | Implemented in source | Form computes end time and v3 validator checks it server-side. Real database installation and edge-case behavior were not independently exercised in this review. |
 | Faculty availability enforcement | Implemented in source; management partial | SQL checks the complete class window. Defaults are seeded for Mon-Sat 08:00-17:00. The app reports availability but does not edit windows; a Program Head must use Supabase Table Editor. The model supports one window per day. |
 | Partner-day schedules | Implemented through RPCs/UI | Two rows represent one course meeting on Mon/Wed or Tue/Thu. UI and triggers synchronize edits/status/deletion. Database does not enforce the full pair shape on arbitrary direct writes. |
-| Course catalog and curriculum editor | Implemented in UI/RLS | Program Head can add/edit subjects and add/edit/remove curriculum mappings. The schedule picker filters to current active-semester mappings. The database schedule RPC itself does not verify that a subject belongs to the selected curriculum mapping. |
+| Catalog and curriculum management | Implemented in UI/RLS | Program Head can add/edit/remove subjects, programs, teachers, and curriculum assignments. Schedule options still filter to active-semester mappings; schedule RPC membership enforcement remains a separate integrity gap. |
 | Faculty schedule and all-faculty summary | Implemented | Reports show schedule rows, load and availability for an individual faculty member or all faculty. |
 | Room schedule/availability and print reports | Implemented | Client-side reports use loaded active-period schedules; physical-room free time is shown in a fixed 07:00-20:00 range. |
+| Room CRUD and period management | Implemented in UI/RLS + v4 RPCs | Program Heads add/edit/remove rooms and periods, start/close periods, and copy schedules. Period copy rolls back if any copied schedule fails validation. |
+| Student/teacher weekly timetable | Implemented | Mon-Sat, 30-minute rows in a horizontally scrollable grid; the flat list remains available. |
+| Schedule/report exports | Implemented | CSV, jsPDF PDF downloads, and ICS recurring events bounded by period dates. Existing periods require their dates to be entered before ICS export. |
+| Bulk publish/unpublish | Implemented | Program Head selection updates are RLS-protected; paired status triggers synchronize partner rows. |
+| Conflict suggestions | Implemented in v4 RPC | Returns available rooms at the selected time and valid start times in the selected room, using shared schedule rules. |
 | Automatic schedule generation | Missing by design | README says this system assists manual scheduling and does not generate a timetable. |
 | Student accounts/permissions | Missing by design | Students are anonymous and can only read the published view. |
-| In-app faculty availability editor | Missing | The documented workflow uses the Supabase Table Editor. |
+| In-app faculty availability editor | Missing | The workflow still uses the Supabase Table Editor. |
 | Automated test suite/CI | Missing | No package/test runner or CI workflow is present; `TESTING.md` is a manual test plan. |
 
 ## Recent updates reviewed
@@ -122,7 +128,7 @@ The latest feature branch history is:
 - `2b5ce6e` — displays Supabase save errors and recalculates class end time on submit.
 - `efb3a27` — translates v3 validation messages to user-facing conflict explanations.
 
-The worktree was clean at review time. The client-side conflict translator handles the current SQL message families (duration, availability, room occupancy, teacher/cohort gaps, breaks, max load, and missing active period). This gives users clearer reasons without another SQL change. It relies on the server's message wording, so wording changes in SQL should be reviewed alongside the formatter.
+The client-side conflict translator handles the current SQL message families (duration, availability, room occupancy, teacher/cohort gaps, breaks, max load, and missing active period). The v4 changes are not yet applied to the connected Supabase project; run migrations in order on a disposable test project and complete the updated TESTING.md checks before release.
 
 The SQL text in `migration_v3.sql` contains a replacement character between the occupied-room time endpoints (`%s�%s`, around line 117). The frontend formatter currently tolerates a non-alphanumeric separator, but the database message itself can display a damaged separator in other clients.
 

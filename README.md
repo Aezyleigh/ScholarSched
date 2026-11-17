@@ -23,15 +23,20 @@ timetable automatically.
 - **Curriculum management.** The Program Head can edit course details and each
   program/year/semester course assignment. Schedule courses come from the active curriculum.
 - **Faculty reports.** Individual availability and a summary of all faculty, class counts,
-  weekly load, and availability are available in Reports.
-- **Scheduling period.** New schedules belong to the active Academic Year and Semester.
-  Existing schedules are preserved by the v3 migration and checked when edited.
+  weekly load, and availability are available in Reports. Reports can be downloaded as CSV/PDF
+  or exported as a calendar file.
+- **Room and period management.** Program Heads manage rooms and periods in the app. Periods
+  include dates, can be closed or started, and may copy validated schedules as drafts.
+- **Timetable and exports.** Students and teachers can switch between a list and a Mon-Sat
+  weekly timetable. Schedule exports include CSV, PDF, and recurring calendar events (.ics).
+- **Bulk publishing and conflict help.** Program Heads can publish/unpublish selected rows; failed
+  saves can suggest rooms and start times that pass the active scheduling rules.
 
 ## Roles
 
 | Role | Account | Can do |
 | --- | --- | --- |
-| Program Head | Yes | Create, publish, unpublish, and delete draft schedules |
+| Program Head | Yes | Manage catalogs, rooms, periods, and schedules; publish/unpublish schedules |
 | Teacher | Yes | View own published schedule |
 | Student | No | View published schedule for a Program + Year Level |
 
@@ -63,13 +68,18 @@ ScholarSched/
 │       └── schedules.js  All app logic (talks to Supabase)
 └── supabase/
     ├── schema.sql        Tables, conflict constraints, security rules, views, create_schedule()
+    ├── migration_v2.sql Online rooms, breaks, max load and schedule validation
+    ├── migration_v3.sql Faculty availability, curriculum, paired days and validation
+    ├── migration_v4.sql Period dates/lifecycle/copy and conflict suggestions
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-`supabase/migration_v3.sql` adds the new scheduling rules, faculty availability, partner-day
-support, and curriculum tables. Apply it after v2 when deploying these features.
+Apply `schema.sql`, then migrations v2, v3, and v4 in order. Migration v4 adds period dates and
+protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
+edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
+browser bundle from jsDelivr.
 
 ## Security notes
 
@@ -85,7 +95,9 @@ support, and curriculum tables. Apply it after v2 when deploying these features.
 
 - Faculty availability can be reviewed in Reports; administrators manage its day/time windows
   in Supabase Table Editor. The migration seeds Monday-Saturday, 8:00 AM-5:00 PM windows.
-- Programs, year levels, rooms, and scheduling periods remain managed in Supabase Table Editor.
-- An internet connection is required.
+- Year levels and faculty availability windows remain managed in Supabase Table Editor.
+- Period copy is atomic: if a copied schedule fails validation, the period and copied rows roll back.
+- RLS and protected RPCs restrict room/period management and bulk schedule changes to the Program Head.
+- An internet connection is required for Supabase and the pinned PDF library.
 
 

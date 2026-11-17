@@ -136,6 +136,20 @@ td.actions button { margin-right: .35rem; }
 .toolbar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; margin-bottom: 1rem; }
 .toolbar label { margin-bottom: 0; }
 
+.view-tools button[aria-pressed="true"] { background: var(--green-100); border-color: var(--green-700); }
+.check-label { display: flex; flex-direction: row; align-items: center; gap: .5rem; }
+.check-label input { width: auto; }
+.weekly-view { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+.weekly-grid { display: grid; min-width: 940px; position: relative; background: #fff; }
+.weekly-day { position: sticky; top: 0; z-index: 3; padding: .45rem; background: var(--green-100); color: var(--green-900); font-weight: 600; border-bottom: 1px solid var(--line); }
+.weekly-time { position: sticky; left: 0; z-index: 2; padding: .25rem; text-align: right; color: var(--muted); font-size: .78rem; background: #fff; border-right: 1px solid var(--line); }
+.weekly-slot { border-bottom: 1px solid #edf0eb; border-right: 1px solid #edf0eb; }
+.weekly-class { z-index: 1; min-width: 0; overflow: hidden; margin: 2px; padding: .3rem .4rem; display: flex; flex-direction: column; line-height: 1.2; font-size: .78rem; background: var(--green-100); border-left: 3px solid var(--green-700); border-radius: 4px; }
+.weekly-class strong { overflow: hidden; text-overflow: ellipsis; }
+.suggestions { margin-top: .75rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+.suggestions p { margin: .4rem 0; }
+.suggestions button { margin: .15rem; }
+
 @media (max-width: 600px) {
   .content { padding: 1rem; }
   section { padding: 1rem; }
