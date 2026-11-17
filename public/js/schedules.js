@@ -479,6 +479,10 @@ $('form-cancel').addEventListener('click', () => {
 $('schedule-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('form-alert').hidden = true;
+  updateClassEnd();
+  if (! $('f-end').value || toMin($('f-end').value) - toMin($('f-start').value) !== 150) {
+    return showFormAlert('error', 'Each class must be exactly 2 hours 30 minutes. Choose a valid start time; the end time is calculated automatically.');
+  }
 
   const days = $('f-day').value.split('|');
   if (editingPairId && days.length !== 2) {
@@ -507,7 +511,8 @@ $('schedule-form').addEventListener('submit', async (e) => {
   const { data, error } = result;
 
   if (error) {
-    showFormAlert('error', 'Could not save the schedule. Please try again.');
+    console.error('Schedule save failed:', error);
+    showFormAlert('error', `Could not save the schedule: ${error.message || 'Supabase returned no error details.'}`);
   } else if (data.ok) {
     resetForm();
     showFormAlert('ok', wasEditing ? 'Changes saved.' : 'Saved as draft.');
