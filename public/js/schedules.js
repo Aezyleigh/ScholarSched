@@ -3,8 +3,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null; // { id, name, role, teacher_id }
 let staffRows = [];     // schedules shown to the signed-in staff member
-let lookups = { programs: [], years: [], teachers: [], rooms: [] };
+let lookups = { subjects: [], programs: [], years: [], teachers: [], rooms: [], availability: [], curriculum: [] };
 let editingId = null;   // id of the schedule being edited, or null when creating
+let editingPairId = null;
+let currentSemester = null;
+let editingCurriculumId = null;
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_START = 7 * 60;   // room availability is shown between 7:00 AM ...
@@ -46,11 +49,12 @@ function showLogin() {
 }
 
 function showTab(name) {
-  ['schedules', 'reports'].forEach((t) => {
+  ['schedules', 'reports', 'curriculum'].forEach((t) => {
     $(`tab-${t}`).hidden = t !== name;
     document.querySelector(`[data-tab="${t}"]`).setAttribute('aria-selected', String(t === name));
   });
   if (name === 'reports') renderReport();
+  if (name === 'curriculum') renderCurriculum();
 }
 
 async function showApp(user) {
@@ -125,11 +129,28 @@ async function loadPeriodLabel() {
     .select('academic_year, semester')
     .eq('is_active', true)
     .maybeSingle();
+  currentSemester = data?.semester || null;
   $('period-label').textContent = data
     ? `${data.academic_year}, ${data.semester} Semester`
     : 'No active scheduling period';
 }
 
+function updateSubjectOptions() {
+  const programId = $('f-program').value;
+  const yearId = $('f-year').value;
+  const assigned = new Set(lookups.curriculum
+    .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === currentSemester)
+    .map((c) => String(c.subject_id)));
+  const rows = lookups.subjects.filter((s) => assigned.has(String(s.id)));
+  const select = $('f-subject');
+  const previous = select.value;
+  select.innerHTML = '<option value="">Select a course from this curriculum</option>' + rows
+    .map((s) => `<option value="${esc(s.id)}">${esc(s.subject_code)} – ${esc(s.subject_name)}</option>`).join('');
+  if (rows.some((s) => String(s.id) === previous)) select.value = previous;
+  $('subject-note').textContent = rows.length ? '' : 'Assign courses for this program, year, and active semester in the Curriculum tab.';
+}
+$('f-program').addEventListener('change', updateSubjectOptions);
+$('f-year').addEventListener('change', updateSubjectOptions);
 function fillSelect(id, rows, labelFn) {
   $(id).innerHTML = rows
     .map((r) => `<option value="${esc(r.id)}">${esc(labelFn(r))}</option>`)
@@ -137,32 +158,155 @@ function fillSelect(id, rows, labelFn) {
 }
 
 async function loadLookups() {
-  const [subjects, programs, years, teachers, rooms] = await Promise.all([
-    sb.from('subjects').select('id, subject_code, subject_name').order('subject_code'),
+  const [subjects, programs, years, teachers, rooms, availability, curriculum] = await Promise.all([
+    sb.from('subjects').select('id, subject_code, subject_name, units, prerequisite').order('subject_code'),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
     sb.from('teachers').select('id, teacher_name, max_load_hours').order('teacher_name'),
     sb.from('rooms').select('id, room_name, is_online').order('room_name'),
+    sb.from('teacher_availability').select('teacher_id, day, start_time, end_time').order('day'),
+    sb.from('curriculum_courses').select('id, subject_id, program_id, year_level_id, semester').order('semester'),
   ]);
   lookups = {
-    programs: programs.data || [],
-    years: years.data || [],
-    teachers: teachers.data || [],
-    rooms: rooms.data || [],
+    subjects: subjects.data || [], programs: programs.data || [], years: years.data || [],
+    teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
+    curriculum: curriculum.data || [],
   };
-  fillSelect('f-subject', subjects.data || [], (r) => `${r.subject_code} – ${r.subject_name}`);
   fillSelect('f-program', lookups.programs, (r) => r.program_name);
   fillSelect('f-year', lookups.years, (r) => r.year_level);
   fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('f-room', lookups.rooms, (r) => r.room_name);
-  // Report pickers
+  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} – ${r.subject_name}`);
+  fillSelect('curriculum-program', lookups.programs, (r) => r.program_name);
+  fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
   fillSelect('r-year', lookups.years, (r) => r.year_level);
   fillSelect('r-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('r-room', lookups.rooms, (r) => r.room_name);
+  renderCurriculum();
   await loadPeriodLabel();
+  updateSubjectOptions();
 }
 
+function showCurriculumAlert(id, type, message) {
+  const box = $(id);
+  box.className = `alert ${type}`;
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function renderCurriculum() {
+  const subjects = lookups.subjects || [];
+  const subjectById = new Map(subjects.map((s) => [String(s.id), s]));
+  const programById = new Map(lookups.programs.map((p) => [String(p.id), p]));
+  const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
+  $('course-body').innerHTML = subjects.map((s) => `
+    <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
+    <td>${esc(s.prerequisite || '—')}</td><td><button type="button" data-edit-course="${s.id}">Edit</button></td></tr>`).join('');
+  $('curriculum-body').innerHTML = (lookups.curriculum || []).map((c) => {
+    const s = subjectById.get(String(c.subject_id));
+    const p = programById.get(String(c.program_id));
+    const y = yearById.get(String(c.year_level_id));
+    if (!s || !p || !y) return '';
+    return `<tr><td>${esc(s.subject_code)} – ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
+      <td>${esc(y.year_level)}</td><td>${esc(c.semester)}</td>
+      <td><button type="button" data-edit-curriculum="${c.id}">Edit</button> <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
+  }).join('');
+}
+
+$('course-body').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-edit-course]');
+  if (!btn) return;
+  const s = lookups.subjects.find((row) => String(row.id) === btn.dataset.editCourse);
+  if (!s) return;
+  $('course-id').value = s.id;
+  $('course-code').value = s.subject_code;
+  $('course-name').value = s.subject_name;
+  $('course-units').value = s.units;
+  $('course-prerequisite').value = s.prerequisite || '';
+  $('course-submit').textContent = 'Save course';
+  $('course-cancel').hidden = false;
+});
+
+$('course-cancel').addEventListener('click', () => {
+  $('course-form').reset();
+  $('course-id').value = '';
+  $('course-submit').textContent = 'Add course';
+  $('course-cancel').hidden = true;
+  $('course-alert').hidden = true;
+});
+
+$('course-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('course-id').value;
+  const values = {
+    subject_code: $('course-code').value.trim(),
+    subject_name: $('course-name').value.trim(),
+    units: Number($('course-units').value),
+    prerequisite: $('course-prerequisite').value.trim() || null,
+  };
+  const { error } = id
+    ? await sb.from('subjects').update(values).eq('id', Number(id))
+    : await sb.from('subjects').insert(values);
+  if (error) return showCurriculumAlert('course-alert', 'error', 'Could not save the course. Check that its code is unique.');
+  $('course-form').reset();
+  $('course-id').value = '';
+  $('course-submit').textContent = 'Add course';
+  $('course-cancel').hidden = true;
+  showCurriculumAlert('course-alert', 'ok', id ? 'Course updated.' : 'Course added.');
+  await loadLookups();
+});
+
+$('curriculum-cancel').addEventListener('click', () => {
+  editingCurriculumId = null;
+  $('curriculum-form').reset();
+  $('curriculum-submit').textContent = 'Add to curriculum';
+  $('curriculum-cancel').hidden = true;
+  $('curriculum-alert').hidden = true;
+});
+
+$('curriculum-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const values = {
+    subject_id: Number($('curriculum-subject').value),
+    program_id: Number($('curriculum-program').value),
+    year_level_id: Number($('curriculum-year').value),
+    semester: $('curriculum-semester').value,
+  };
+  const { error } = editingCurriculumId
+    ? await sb.from('curriculum_courses').update(values).eq('id', editingCurriculumId)
+    : await sb.from('curriculum_courses').insert(values);
+  if (error) return showCurriculumAlert('curriculum-alert', 'error', 'Could not save this curriculum entry. It may already exist.');
+  const wasEditing = editingCurriculumId !== null;
+  editingCurriculumId = null;
+  $('curriculum-form').reset();
+  $('curriculum-submit').textContent = 'Add to curriculum';
+  $('curriculum-cancel').hidden = true;
+  showCurriculumAlert('curriculum-alert', 'ok', wasEditing ? 'Curriculum entry updated.' : 'Course added to the curriculum.');
+  await loadLookups();
+});
+
+$('curriculum-body').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-curriculum]');
+  if (edit) {
+    const row = lookups.curriculum.find((c) => String(c.id) === edit.dataset.editCurriculum);
+    if (!row) return;
+    editingCurriculumId = row.id;
+    $('curriculum-subject').value = row.subject_id;
+    $('curriculum-program').value = row.program_id;
+    $('curriculum-year').value = row.year_level_id;
+    $('curriculum-semester').value = row.semester;
+    $('curriculum-submit').textContent = 'Save curriculum';
+    $('curriculum-cancel').hidden = false;
+    return;
+  }
+  const btn = e.target.closest('[data-remove-curriculum]');
+  if (!btn || !confirm('Remove this course from the curriculum?')) return;
+  const { error } = await sb.from('curriculum_courses').delete().eq('id', Number(btn.dataset.removeCurriculum));
+  if (error) return showCurriculumAlert('curriculum-alert', 'error', 'Could not remove this curriculum entry.');
+  showCurriculumAlert('curriculum-alert', 'ok', 'Curriculum entry removed.');
+  await loadLookups();
+});
 /* ---------- schedule table (staff) ---------- */
 
 async function fetchStaffSchedules() {
@@ -170,7 +314,7 @@ async function fetchStaffSchedules() {
     const { data, error } = await sb
       .from('schedules')
       .select(`id, day, start_time, end_time, status,
-               subject_id, program_id, year_level_id, teacher_id, room_id,
+               subject_id, program_id, year_level_id, teacher_id, room_id, schedule_pair_id,
                subjects(subject_code, subject_name),
                programs(program_name), year_levels(year_level),
                teachers(teacher_name), rooms(room_name, is_online),
@@ -180,7 +324,7 @@ async function fetchStaffSchedules() {
     return data.map((s) => ({
       id: s.id, day: s.day, start_time: s.start_time, end_time: s.end_time, status: s.status,
       subject_id: s.subject_id, program_id: s.program_id, year_level_id: s.year_level_id,
-      teacher_id: s.teacher_id, room_id: s.room_id,
+      teacher_id: s.teacher_id, room_id: s.room_id, schedule_pair_id: s.schedule_pair_id,
       subject_code: s.subjects.subject_code, subject_name: s.subjects.subject_name,
       program_name: s.programs.program_name, year_level: s.year_levels.year_level,
       teacher_name: s.teachers.teacher_name, room_name: s.rooms.room_name,
@@ -236,37 +380,39 @@ function renderStaffTable() {
 $('search-input').addEventListener('input', renderStaffTable);
 
 function actionButtons(s) {
-  const edit = `<button data-id="${s.id}" data-action="edit">Edit</button>`;
+  const paired = s.schedule_pair_id ? 'data-paired="true"' : '';
+  const edit = `<button data-id="${s.id}" ${paired} data-action="edit">Edit</button>`;
   if (s.status === 'DRAFT') {
     return `${edit}
-            <button data-id="${s.id}" data-action="publish" class="primary">Publish</button>
-            <button data-id="${s.id}" data-action="delete" class="danger">Delete</button>`;
+            <button data-id="${s.id}" ${paired} data-action="publish" class="primary">Publish</button>
+            <button data-id="${s.id}" ${paired} data-action="delete" class="danger">Delete</button>`;
   }
   return `${edit}
-          <button data-id="${s.id}" data-action="unpublish">Unpublish</button>`;
+          <button data-id="${s.id}" ${paired} data-action="unpublish">Unpublish</button>`;
 }
 
 async function changeStatus(id, action) {
   let result;
+  const target = (query) => query.eq('id', id);
   if (action === 'publish') {
-    result = await sb.from('schedules').update({ status: 'PUBLISHED' }).eq('id', id).eq('status', 'DRAFT').select();
+    result = await target(sb.from('schedules').update({ status: 'PUBLISHED' })).eq('status', 'DRAFT').select();
     return { ok: !result.error && result.data.length > 0, message: 'Published', error: 'Only drafts can be published' };
   }
   if (action === 'unpublish') {
-    result = await sb.from('schedules').update({ status: 'DRAFT' }).eq('id', id).eq('status', 'PUBLISHED').select();
+    result = await target(sb.from('schedules').update({ status: 'DRAFT' })).eq('status', 'PUBLISHED').select();
     return { ok: !result.error && result.data.length > 0, message: 'Returned to draft', error: 'Only published schedules can be unpublished' };
   }
-  result = await sb.from('schedules').delete().eq('id', id).eq('status', 'DRAFT').select();
+  result = await target(sb.from('schedules').delete()).eq('status', 'DRAFT').select();
   return { ok: !result.error && result.data.length > 0, message: 'Draft deleted', error: 'Only drafts can be deleted. Unpublish it first.' };
 }
 
 $('schedule-body').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-action]');
   if (!btn) return;
-  const { id, action } = btn.dataset;
+  const { id, action, paired } = btn.dataset;
 
   if (action === 'edit') return startEdit(Number(id));
-  if (action === 'delete' && !confirm('Delete this draft schedule?')) return;
+  if (action === 'delete' && !confirm(paired ? 'Delete both draft days in this paired schedule?' : 'Delete this draft schedule?')) return;
 
   btn.disabled = true;
   const res = await changeStatus(Number(id), action);
@@ -286,24 +432,38 @@ function showFormAlert(type, message, list = []) {
 
 function resetForm() {
   editingId = null;
+  editingPairId = null;
   $('schedule-form').reset();
   $('form-title').textContent = 'Create schedule';
   $('form-submit').textContent = 'Check conflicts and save as draft';
   $('form-cancel').hidden = true;
 }
 
+function updateClassEnd() {
+  const start = $('f-start').value;
+  if (!start) { $('f-end').value = ''; return; }
+  const end = toMin(start) + 150;
+  $('f-end').value = end < 24 * 60 ? minToTime(end).slice(0, 5) : '';
+}
+$('f-start').addEventListener('input', updateClassEnd);
+$('f-start').addEventListener('change', updateClassEnd);
 function startEdit(id) {
   const s = staffRows.find((r) => r.id === id);
   if (!s) return;
   editingId = id;
-  $('f-subject').value = s.subject_id;
+  editingPairId = s.schedule_pair_id;
   $('f-program').value = s.program_id;
   $('f-year').value = s.year_level_id;
+  updateSubjectOptions();
+  $('f-subject').value = s.subject_id;
   $('f-teacher').value = s.teacher_id;
   $('f-room').value = s.room_id;
-  $('f-day').value = s.day;
+  const pairedDays = editingPairId
+    ? staffRows.filter((r) => r.schedule_pair_id === editingPairId).map((r) => r.day).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
+    : [];
+  $('f-day').value = pairedDays.length === 2 ? pairedDays.join('|') : s.day;
   $('f-start').value = s.start_time.slice(0, 5);
-  $('f-end').value = s.end_time.slice(0, 5);
+  updateClassEnd();
   $('form-title').textContent = `Edit schedule: ${s.subject_code}`;
   $('form-submit').textContent = 'Check conflicts and save changes';
   $('form-cancel').hidden = false;
@@ -319,24 +479,40 @@ $('form-cancel').addEventListener('click', () => {
 $('schedule-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('form-alert').hidden = true;
+  updateClassEnd();
+  if (! $('f-end').value || toMin($('f-end').value) - toMin($('f-start').value) !== 150) {
+    return showFormAlert('error', 'Each class must be exactly 2 hours 30 minutes. Choose a valid start time; the end time is calculated automatically.');
+  }
 
+  const days = $('f-day').value.split('|');
+  if (editingPairId && days.length !== 2) {
+    return showFormAlert('error', 'Keep paired schedules paired. Cancel and create a new schedule to change between single and paired days.');
+  }
   const args = {
     p_subject_id: Number($('f-subject').value),
     p_program_id: Number($('f-program').value),
     p_year_level_id: Number($('f-year').value),
     p_teacher_id: Number($('f-teacher').value),
     p_room_id: Number($('f-room').value),
-    p_day: $('f-day').value,
     p_start: $('f-start').value,
     p_end: $('f-end').value,
   };
   const wasEditing = editingId !== null;
-  const { data, error } = wasEditing
-    ? await sb.rpc('update_schedule', { p_id: editingId, ...args })
-    : await sb.rpc('create_schedule', args);
+  let result;
+  if (editingPairId || (wasEditing && days.length === 2)) {
+    result = await sb.rpc('update_schedule_pair', { p_id: editingId, ...args, p_day_one: days[0], p_day_two: days[1] });
+  } else if (wasEditing) {
+    result = await sb.rpc('update_schedule', { p_id: editingId, ...args, p_day: days[0] });
+  } else if (days.length === 2) {
+    result = await sb.rpc('create_schedule_pair', { ...args, p_day_one: days[0], p_day_two: days[1] });
+  } else {
+    result = await sb.rpc('create_schedule', { ...args, p_day: days[0] });
+  }
+  const { data, error } = result;
 
   if (error) {
-    showFormAlert('error', 'Could not save the schedule. Please try again.');
+    console.error('Schedule save failed:', error);
+    showFormAlert('error', `Could not save the schedule: ${error.message || 'Supabase returned no error details.'}`);
   } else if (data.ok) {
     resetForm();
     showFormAlert('ok', wasEditing ? 'Changes saved.' : 'Saved as draft.');
@@ -391,6 +567,11 @@ function freeSlots(roomRows) {
 
 const slotText = ([a, b]) => `${to12h(minToTime(a))} – ${to12h(minToTime(b))}`;
 
+function availabilityText(teacherId) {
+  return lookups.availability.filter((a) => String(a.teacher_id) === String(teacherId))
+    .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day))
+    .map((a) => `${a.day.slice(0, 3)} ${to12h(a.start_time)}–${to12h(a.end_time)}`).join('; ') || 'Not configured';
+}
 function renderReport() {
   if (!currentUser || currentUser.role !== 'admin') return;
   const type = $('r-type').value;
@@ -410,6 +591,16 @@ function renderReport() {
     const rows = staffRows.filter((s) => String(s.program_id) === String(program.id) && String(s.year_level_id) === String(year.id));
     out.innerHTML = `<h3>Class schedule: ${esc(program.program_name)}, ${esc(year.year_level)}</h3>${meta}` +
       scheduleTable(rows, ['subject', 'teacher', 'room', 'day', 'time', 'status']);
+  } else if (type === 'faculty-all') {
+    const rows = lookups.teachers.map((teacher) => {
+      const classes = staffRows.filter((s) => String(s.teacher_id) === String(teacher.id));
+      const load = classes.reduce((n, s) => n + hoursOf(s), 0);
+      return `<tr><td>${esc(teacher.teacher_name)}</td><td>${classes.length}</td>
+        <td>${round1(load)} / ${esc(teacher.max_load_hours)} hours</td><td>${esc(availabilityText(teacher.id))}</td></tr>`;
+    }).join('');
+    out.innerHTML = `<h3>All faculty summary</h3>${meta}<div class="table-wrap"><table>
+      <thead><tr><th>Faculty</th><th>Classes</th><th>Weekly load / limit</th><th>Availability</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
   } else if (type === 'faculty') {
     const teacher = pick('r-teacher', lookups.teachers);
     if (!teacher) { out.innerHTML = ''; return; }
@@ -417,6 +608,7 @@ function renderReport() {
     const total = rows.reduce((n, s) => n + hoursOf(s), 0);
     out.innerHTML = `<h3>Faculty schedule: ${esc(teacher.teacher_name)}</h3>${meta}` +
       `<p><strong>Teaching load:</strong> ${round1(total)} of ${esc(teacher.max_load_hours)} hours per week</p>` +
+      `<p><strong>Availability:</strong> ${esc(availabilityText(teacher.id))}</p>` +
       scheduleTable(rows, ['subject', 'group', 'room', 'day', 'time', 'status']);
   } else if (type === 'room') {
     const room = pick('r-room', lookups.rooms);

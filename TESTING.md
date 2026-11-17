@@ -1,14 +1,15 @@
 # Testing ScholarSched
 
-ScholarSched has no automated test suite, so testing is done in four layers. Work through
-them in order. Each layer finds a different kind of problem.
+ScholarSched has no automated test suite, so use the browser and read-only Supabase checks.
+Apply `migration_v3.sql` only in a test project first; do not rerun v2 or modify production data
+while verifying this feature. The migration is a one-time database change, not a browser test.
 
-| Layer | What it proves | Tool |
+| Check | What it proves | Tool |
 | --- | --- | --- |
-| 1. Setup check | The database, users, and config are in place | Supabase dashboard |
-| 2. Functional tests | The app behaves as the workflow describes | Browser |
-| 3. Security tests | Each role can only do what it should | Browser console |
-| 4. API and database tests | The rules hold without the front end | Postman, SQL Editor |
+| Setup | Database, users, and config are in place | Supabase dashboard |
+| Functional | The app behaves as the workflow describes | Browser |
+| Security | Each role can only do what it should | Browser console |
+| API | RPC access and returned errors match role/rules | Postman |
 
 Record every result in the test log at the end. It is good evidence for your project.
 
@@ -52,19 +53,20 @@ Use a private/incognito window for the student tests so no staff session interfe
 
 ### 2.3 Creating schedules and conflicts (Program Head)
 
-Create the first schedule: CS101, BS Computer Science, 3rd Year, Juan Dela Cruz, Room 201,
-Monday 8:00-9:00 AM.
+First assign a course to the active semester in **Curriculum**. Create a test class: CS101,
+BS Computer Science, 3rd Year, Juan Dela Cruz, Room 201, Monday starting at 8:00 AM. Its
+end time should fill automatically as 10:30 AM.
 
 | # | Test | Expected |
 | --- | --- | --- |
 | C1 | Save the schedule above | "Saved as draft." It appears with status DRAFT |
-| C2 | Same room, Monday 8:30-9:30, different teacher and a different program | Room conflict, not saved |
-| C3 | Same teacher, Monday 8:30-9:30, different room and a different program | Teacher conflict, not saved |
-| C4 | Same program and year, Monday 8:30-9:30, different room and a different teacher | Program/Year Level conflict, not saved |
-| C5 | Room 201, Monday 9:00-10:00, different teacher and program | **Saved** (back-to-back is not an overlap) |
-| C6 | Same room, a different day | Saved |
-| C7 | Start 10:00, end 9:00 | Rejected: end time must be after start time |
-| C8 | Create a schedule that hits room, teacher, and program at once | One alert listing all three conflicts |
+| C2 | Same room, teacher, or cohort overlaps Monday; try 8:30 AM | Rejected with a relevant conflict |
+| C3 | Change start to 10:00 AM | Rejected because the 2.5-hour class overlaps the fixed lunch break |
+| C4 | Try to start before 8:00 AM | Browser blocks it; the database also rejects it |
+| C5 | Use a course not assigned to the selected program/year/active semester | Course is not selectable |
+| C6 | Select a different day at 8:00 AM | Saved if its room, teacher, and cohort are free |
+| C7 | Verify the end-time field | Read-only and exactly 2 hours 30 minutes after start |
+| C8 | Assign an unavailable day/time through a direct schedule RPC | Rejected with faculty availability message |
 
 ### 2.4 Draft and publish workflow
 
@@ -89,6 +91,21 @@ Maria with BS Information Technology 2nd Year.
 | V5 | Program Head unpublishes the first, then teacher and student refresh | It disappears for both |
 | V6 | Create a draft and never publish it | Never appears for any teacher or student |
 
+### 2.6 Partner days, curriculum, and faculty reports
+
+| # | Test | Expected |
+| --- | --- | --- |
+| F1 | Create a Monday/Wednesday paired class | Two schedule rows, same class details and time |
+| F2 | Edit the paired class | Both days update together |
+| F3 | Publish or unpublish one paired row | Both paired days change status together |
+| F4 | Delete a paired draft | Confirmation says both days; both draft rows are removed |
+| F5 | Try to change a paired class to a single day | Rejected; paired schedules stay paired |
+| F6 | Open Curriculum and edit a course | Course code/name/units/prerequisite update; duplicates show an error |
+| F7 | Edit a curriculum entry's course, program, year, or semester | Entry updates; duplicate assignments are rejected |
+| F8 | Add/remove a curriculum assignment | Schedule course options reflect the assignment; existing schedules remain |
+| F9 | Open the all-faculty report | Each faculty member shows classes, weekly load/limit, and Mon-Sat availability |
+| F10 | Edit a faculty availability row in Supabase, then create outside its window | Schedule is rejected |
+
 ## 3. Security tests (browser console)
 
 The safety of this system depends on Row Level Security, so test it directly. These
@@ -106,7 +123,7 @@ A blocked read returns an **empty list**, not an error. That is correct.
 (await sb.from('student_schedule').select()).data   // expect published classes only
 (await sb.from('schedules').insert({status:'DRAFT'})).error   // expect an error
 (await sb.rpc('create_schedule', {p_subject_id:1,p_program_id:1,p_year_level_id:1,
-  p_teacher_id:1,p_room_id:1,p_day:'Monday',p_start:'13:00',p_end:'14:00'})).error  // expect a permission error
+  p_teacher_id:1,p_room_id:1,p_day:'Monday',p_start:'08:00',p_end:'10:30'})).error  // expect a permission error
 ```
 
 ### 3.2 As a teacher (log in as Juan first)
@@ -117,7 +134,7 @@ A blocked read returns an **empty list**, not an error. That is correct.
 (await sb.from('schedules').update({status:'PUBLISHED'}).eq('id',1).select()).data  // expect []
 (await sb.from('schedules').delete().eq('id',1).select()).data                      // expect []
 (await sb.rpc('create_schedule', {p_subject_id:1,p_program_id:1,p_year_level_id:1,
-  p_teacher_id:1,p_room_id:1,p_day:'Tuesday',p_start:'13:00',p_end:'14:00'})).data
+  p_teacher_id:1,p_room_id:1,p_day:'Tuesday',p_start:'08:00',p_end:'10:30'})).data
   // expect { ok: false, error: "You do not have permission to do this" }
 ```
 
@@ -133,37 +150,28 @@ If any anonymous or teacher test returns data it should not, **stop and fix the 
 
 ## 4. API and database tests
 
-### 4.1 Database rules without the front end (SQL Editor)
+### 4.1 Read-only database checks (SQL Editor)
 
-The SQL Editor bypasses Row Level Security, but the exclusion constraints still apply, so
-this tests the second layer of conflict protection. First create the C1 schedule in the app.
-
-```sql
--- Same room, overlapping time: expect ERROR ... violates exclusion constraint "no_room_overlap"
-insert into schedules (period_id, subject_id, program_id, year_level_id, teacher_id, room_id, day, start_time, end_time)
-values (1, 2, 2, 1, 2, 1, 'Monday', '08:30', '09:30');
-
--- Back-to-back in the same room: expect success
-insert into schedules (period_id, subject_id, program_id, year_level_id, teacher_id, room_id, day, start_time, end_time)
-values (1, 2, 2, 1, 2, 1, 'Monday', '09:00', '10:00');
-
--- End before start: expect ERROR (check constraint)
-insert into schedules (period_id, subject_id, program_id, year_level_id, teacher_id, room_id, day, start_time, end_time)
-values (1, 2, 2, 1, 2, 2, 'Monday', '10:00', '09:00');
-```
-
-Then clean up the row you inserted, and check that no overlaps exist in the data. This
-query should return **zero rows**:
+Do not use INSERT, UPDATE, or DELETE against the production database for verification. The
+v3 migration adds a trigger for direct writes; perform write tests only in a test project and
+roll back the test transaction. These read-only queries check the seeded configuration:
 
 ```sql
-select a.id, b.id, a.day
-from schedules a
-join schedules b on a.id < b.id
- and a.period_id = b.period_id and a.day = b.day
- and a.start_time < b.end_time and a.end_time > b.start_time
- and (a.room_id = b.room_id or a.teacher_id = b.teacher_id
-      or (a.program_id = b.program_id and a.year_level_id = b.year_level_id));
+select count(*) as faculty_day_windows
+from public.teacher_availability;
+-- Expect 6 rows for each faculty member (Monday-Saturday).
+
+select label, start_time, end_time from public.break_periods order by start_time;
+-- Expect the existing Lunch break from 12:00 to 13:00.
+
+select count(*) as active_curriculum_assignments
+from public.curriculum_courses c
+join public.scheduling_periods p on p.semester = c.semester and p.is_active;
 ```
+
+The first schedule rule tests should be done through the app's create form. The database
+trigger is a backstop for RPC and direct writes; do not test it by leaving temporary rows in
+a live project.
 
 ### 4.2 REST API tests (Postman)
 
@@ -206,7 +214,7 @@ Body for A2:
 {
   "p_subject_id": 1, "p_program_id": 1, "p_year_level_id": 3,
   "p_teacher_id": 1, "p_room_id": 1,
-  "p_day": "Monday", "p_start": "08:00", "p_end": "09:00"
+  "p_day": "Monday", "p_start": "08:00", "p_end": "10:30"
 }
 ```
 
@@ -226,8 +234,8 @@ pm.test("Status is 200", () => pm.response.to.have.status(200));
 pm.test("Conflict reported", () => pm.expect(pm.response.json().ok).to.eql(false));
 ```
 
-Then run the whole collection with **Run collection**. This is your automated test run.
-Export the collection to the `postman/` folder and commit it.
+Then run the collection with **Run collection**. This is an API verification run; the project
+does not include a checked-in automated test suite.
 
 ## 5. Test on other devices
 
@@ -245,7 +253,7 @@ Copy this table into your documentation and fill it in.
 | ID | Test | Expected | Actual | Pass/Fail | Date | Tester |
 | --- | --- | --- | --- | --- | --- | --- |
 | C2 | Room conflict | Blocked with room message | | | | |
-| C5 | Back-to-back classes | Saved | | | | |
+| C5 | 30-minute gap between same teacher/cohort | Enforced | | | | |
 | P2 | Delete a published schedule | Not allowed | | | | |
 | V3 | Student sees own group only | Only that group | | | | |
 

@@ -20,6 +20,25 @@ create trigger schedule_online_sync
   before insert or update of room_id on public.schedules
   for each row execute function public.sync_schedule_online();
 
+-- Keep existing schedules in sync when a room changes between online and physical.
+create or replace function public.sync_room_schedule_online() returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  update public.schedules
+     set is_online = new.is_online
+   where room_id = new.id
+     and is_online is distinct from new.is_online;
+  return new;
+end;
+$$;
+
+drop trigger if exists room_online_sync on public.rooms;
+create trigger room_online_sync
+  after update of is_online on public.rooms
+  for each row
+  when (old.is_online is distinct from new.is_online)
+  execute function public.sync_room_schedule_online();
+
 -- The room-overlap rule now ignores online classes
 alter table public.schedules drop constraint if exists no_room_overlap;
 alter table public.schedules add constraint no_room_overlap exclude using gist (
