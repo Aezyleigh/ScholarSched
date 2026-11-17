@@ -183,7 +183,6 @@
             <label>Course code <input id="course-code" required maxlength="30"></label>
             <label>Course name <input id="course-name" required maxlength="160"></label>
             <label>Units <input id="course-units" type="number" min="1" max="32767" required></label>
-            <label>Prerequisite <input id="course-prerequisite" maxlength="160"></label>
             <div class="form-actions">
               <button type="submit" id="course-submit" class="primary">Add course</button>
               <button type="button" id="course-cancel" hidden>Cancel edit</button>
@@ -191,7 +190,7 @@
           </form>
           <div id="course-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap">
-            <table><thead><tr><th>Code</th><th>Course</th><th>Units</th><th>Prerequisite</th><th>Actions</th></tr></thead>
+            <table><thead><tr><th>Code</th><th>Course</th><th>Units</th><th>Actions</th></tr></thead>
               <tbody id="course-body"></tbody>
             </table>
           </div>
