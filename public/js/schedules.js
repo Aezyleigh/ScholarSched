@@ -158,7 +158,7 @@ function updateSubjectOptions() {
   const select = $('f-subject');
   const previous = select.value;
   select.innerHTML = '<option value="">Select a course from this curriculum</option>' + rows
-    .map((s) => `<option value="${esc(s.id)}">${esc(s.subject_code)} â€“ ${esc(s.subject_name)}</option>`).join('');
+    .map((s) => `<option value="${esc(s.id)}">${esc(s.subject_code)} ${esc(s.subject_name)}</option>`).join('');
   if (rows.some((s) => String(s.id) === previous)) select.value = previous;
   $('subject-note').textContent = rows.length ? '' : 'Assign courses for this program, year, and active semester in the Curriculum tab.';
 }
@@ -190,7 +190,7 @@ async function loadLookups() {
   fillSelect('f-year', lookups.years, (r) => r.year_level);
   fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('f-room', lookups.rooms, (r) => r.room_name);
-  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} â€“ ${r.subject_name}`, 'Select a course');
+  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} ${r.subject_name}`, 'Select a course');
   fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
   fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
@@ -380,7 +380,7 @@ function renderCurriculum() {
     const p = programById.get(String(c.program_id));
     const y = yearById.get(String(c.year_level_id));
     if (!s || !p || !y) return '';
-    return `<tr><td>${esc(s.subject_code)} â€“ ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
+    return `<tr><td>${esc(s.subject_code)} ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
       <td>${esc(y.year_level)}</td><td>${esc(c.semester)}</td>
       <td><button type="button" data-edit-curriculum="${c.id}">Edit</button> <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
   }).join('');
