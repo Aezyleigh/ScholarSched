@@ -162,7 +162,7 @@ async function loadLookups() {
     sb.from('subjects').select('id, subject_code, subject_name, units, prerequisite').order('subject_code'),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
-    sb.from('teachers').select('id, teacher_name, max_load_hours').order('teacher_name'),
+    sb.from('teachers').select('id, teacher_name, email, max_load_hours').order('teacher_name'),
     sb.from('rooms').select('id, room_name, is_online').order('room_name'),
     sb.from('teacher_availability').select('teacher_id, day, start_time, end_time').order('day'),
     sb.from('curriculum_courses').select('id, subject_id, program_id, year_level_id, semester').order('semester'),
@@ -204,6 +204,13 @@ function renderCurriculum() {
     <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
     <td>${esc(s.prerequisite || 'â€”')}</td><td><button type="button" data-edit-course="${s.id}">Edit</button>
     <button type="button" class="danger" data-remove-course="${s.id}">Remove</button></td></tr>`).join('');
+  $('program-body').innerHTML = lookups.programs.map((p) => `
+    <tr><td>${esc(p.program_name)}</td><td><button type="button" data-edit-program="${p.id}">Edit</button>
+    <button type="button" class="danger" data-remove-program="${p.id}">Remove</button></td></tr>`).join('');
+  $('teacher-body').innerHTML = lookups.teachers.map((t) => `
+    <tr><td>${esc(t.teacher_name)}</td><td>${esc(t.email || '—')}</td><td>${esc(t.max_load_hours)} hours</td>
+    <td><button type="button" data-edit-teacher="${t.id}">Edit</button>
+    <button type="button" class="danger" data-remove-teacher="${t.id}">Remove</button></td></tr>`).join('');
   $('curriculum-body').innerHTML = (lookups.curriculum || []).map((c) => {
     const s = subjectById.get(String(c.subject_id));
     const p = programById.get(String(c.program_id));
@@ -273,6 +280,104 @@ $('course-form').addEventListener('submit', async (e) => {
   $('course-submit').textContent = 'Add course';
   $('course-cancel').hidden = true;
   showCurriculumAlert('course-alert', 'ok', id ? 'Course updated.' : 'Course added.');
+  await loadLookups();
+});
+
+$('program-body').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-program]');
+  if (edit) {
+    const row = lookups.programs.find((p) => String(p.id) === edit.dataset.editProgram);
+    if (!row) return;
+    $('program-id').value = row.id;
+    $('program-name').value = row.program_name;
+    $('program-submit').textContent = 'Save program';
+    $('program-cancel').hidden = false;
+    return;
+  }
+  const remove = e.target.closest('[data-remove-program]');
+  if (!remove) return;
+  const row = lookups.programs.find((p) => String(p.id) === remove.dataset.removeProgram);
+  if (!row || !confirm(`Remove ${row.program_name}? This cannot be undone.`)) return;
+  const { data, error } = await sb.from('programs').delete().eq('id', row.id).select('id');
+  if (error) return showCurriculumAlert('program-alert', 'error', error.code === '23503'
+    ? 'This program is used by a schedule or curriculum entry. Remove those references first.'
+    : 'Could not remove the program. Check your permissions and try again.');
+  if (!data?.length) return showCurriculumAlert('program-alert', 'error', 'Program was not removed. It may no longer exist or you may not have permission.');
+  if ($('program-id').value === String(row.id)) $('program-cancel').click();
+  showCurriculumAlert('program-alert', 'ok', 'Program removed.');
+  await loadLookups();
+});
+
+$('program-cancel').addEventListener('click', () => {
+  $('program-form').reset();
+  $('program-id').value = '';
+  $('program-submit').textContent = 'Add program';
+  $('program-cancel').hidden = true;
+  $('program-alert').hidden = true;
+});
+
+$('program-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('program-id').value;
+  const values = { program_name: $('program-name').value.trim() };
+  const { error } = id
+    ? await sb.from('programs').update(values).eq('id', Number(id))
+    : await sb.from('programs').insert(values);
+  if (error) return showCurriculumAlert('program-alert', 'error', 'Could not save the program. Check that its name is unique.');
+  $('program-cancel').click();
+  showCurriculumAlert('program-alert', 'ok', id ? 'Program updated.' : 'Program added.');
+  await loadLookups();
+});
+
+$('teacher-body').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-teacher]');
+  if (edit) {
+    const row = lookups.teachers.find((t) => String(t.id) === edit.dataset.editTeacher);
+    if (!row) return;
+    $('teacher-id').value = row.id;
+    $('teacher-name').value = row.teacher_name;
+    $('teacher-email').value = row.email || '';
+    $('teacher-load').value = row.max_load_hours;
+    $('teacher-submit').textContent = 'Save teacher';
+    $('teacher-cancel').hidden = false;
+    return;
+  }
+  const remove = e.target.closest('[data-remove-teacher]');
+  if (!remove) return;
+  const row = lookups.teachers.find((t) => String(t.id) === remove.dataset.removeTeacher);
+  if (!row || !confirm(`Remove ${row.teacher_name}? This cannot be undone.`)) return;
+  const { data, error } = await sb.from('teachers').delete().eq('id', row.id).select('id');
+  if (error) return showCurriculumAlert('teacher-alert', 'error', error.code === '23503'
+    ? 'This teacher is assigned to a schedule. Reassign those schedules first.'
+    : 'Could not remove the teacher. Check your permissions and try again.');
+  if (!data?.length) return showCurriculumAlert('teacher-alert', 'error', 'Teacher was not removed. They may no longer exist or you may not have permission.');
+  if ($('teacher-id').value === String(row.id)) $('teacher-cancel').click();
+  showCurriculumAlert('teacher-alert', 'ok', 'Teacher removed.');
+  await loadLookups();
+});
+
+$('teacher-cancel').addEventListener('click', () => {
+  $('teacher-form').reset();
+  $('teacher-id').value = '';
+  $('teacher-submit').textContent = 'Add teacher';
+  $('teacher-cancel').hidden = true;
+  $('teacher-alert').hidden = true;
+});
+
+$('teacher-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('teacher-id').value;
+  const values = {
+    teacher_name: $('teacher-name').value.trim(),
+    email: $('teacher-email').value.trim() || null,
+    max_load_hours: Number($('teacher-load').value),
+  };
+  const { error } = id
+    ? await sb.from('teachers').update(values).eq('id', Number(id))
+    : await sb.from('teachers').insert(values);
+  if (error) return showCurriculumAlert('teacher-alert', 'error', 'Could not save the teacher. Check the entered details and try again.');
+  $('teacher-cancel').click();
+  showCurriculumAlert('teacher-alert', 'ok', id ? 'Teacher updated.' : 'Teacher added.');
   await loadLookups();
 });
 

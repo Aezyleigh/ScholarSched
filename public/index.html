@@ -193,6 +193,32 @@
             </table>
           </div>
         </section>
+        <section>
+          <h2>Programs</h2>
+          <form id="program-form" class="toolbar">
+            <input type="hidden" id="program-id">
+            <label>Program name <input id="program-name" required maxlength="160"></label>
+            <button type="submit" id="program-submit" class="primary">Add program</button>
+            <button type="button" id="program-cancel" hidden>Cancel edit</button>
+          </form>
+          <div id="program-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Program</th><th>Actions</th></tr></thead><tbody id="program-body"></tbody></table></div>
+        </section>
+        <section>
+          <h2>Teachers</h2>
+          <form id="teacher-form" class="grid">
+            <input type="hidden" id="teacher-id">
+            <label>Name <input id="teacher-name" required maxlength="160"></label>
+            <label>Email <input id="teacher-email" type="email"></label>
+            <label>Maximum weekly load (hours) <input id="teacher-load" type="number" min="0.1" step="0.1" required></label>
+            <div class="form-actions">
+              <button type="submit" id="teacher-submit" class="primary">Add teacher</button>
+              <button type="button" id="teacher-cancel" hidden>Cancel edit</button>
+            </div>
+          </form>
+          <div id="teacher-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Max weekly load</th><th>Actions</th></tr></thead><tbody id="teacher-body"></tbody></table></div>
+        </section>
       </div>
     </main>
   </div>
