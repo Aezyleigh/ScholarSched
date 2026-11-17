@@ -90,6 +90,7 @@ section {
 label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; font-weight: 600; color: var(--green-900); margin-bottom: .75rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 1rem; }
 .form-actions { grid-column: 1 / -1; }
+#course-form { margin-bottom: .75rem; }
 
 input, select, button { font: inherit; }
 input, select {
