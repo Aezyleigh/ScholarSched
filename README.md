@@ -9,15 +9,23 @@ timetable automatically.
 
 ## Features
 
-- **Conflict detection.** A schedule cannot be saved if the same room, the same teacher,
-  or the same Program + Year Level already has a class at an overlapping time on that day.
-  Back-to-back classes (8:00-9:00 then 9:00-10:00) are allowed.
+- **Scheduling rules.** New or edited classes start no earlier than 8:00 AM, last exactly
+  2 hours 30 minutes, fit within faculty availability, and keep the configured lunch break.
+  Faculty and the same Program + Year Level need at least 30 minutes between classes.
+  Physical room conflicts and other overlapping classes are blocked.
 - **Draft and publish workflow.** New schedules are saved as private drafts. The Program Head
   publishes them, can unpublish them, and can delete drafts.
 - **Student view without login.** Students choose their Program and Year Level and see only
   published schedules.
 - **Teacher view.** Teachers log in and see their own published teaching schedule.
-- **Scheduling period.** All schedules belong to the active Academic Year and Semester.
+- **Partner days.** Monday/Wednesday and Tuesday/Thursday can be scheduled together at
+  the same time; Friday and Saturday remain individual choices.
+- **Curriculum management.** The Program Head can edit course details and each
+  program/year/semester course assignment. Schedule courses come from the active curriculum.
+- **Faculty reports.** Individual availability and a summary of all faculty, class counts,
+  weekly load, and availability are available in Reports.
+- **Scheduling period.** New schedules belong to the active Academic Year and Semester.
+  Existing schedules are preserved by the v3 migration and checked when edited.
 
 ## Roles
 
@@ -60,6 +68,9 @@ ScholarSched/
 ```
 
 
+`supabase/migration_v3.sql` adds the new scheduling rules, faculty availability, partner-day
+support, and curriculum tables. Apply it after v2 when deploying these features.
+
 ## Security notes
 
 - The anon key is public by design. Data is protected by **Row Level Security** policies in
@@ -72,11 +83,9 @@ ScholarSched/
 
 ## Limitations
 
-- Subjects, teachers, rooms, programs, and periods are managed in the Supabase Table Editor,
-  not inside the app.
-- Schedules cannot be edited. To change one, unpublish it if needed, delete the draft, and
-  recreate it.
-- Reports (teaching load, student schedule, room availability) are not built yet.
+- Faculty availability can be reviewed in Reports; administrators manage its day/time windows
+  in Supabase Table Editor. The migration seeds Monday-Saturday, 8:00 AM-5:00 PM windows.
+- Programs, year levels, rooms, and scheduling periods remain managed in Supabase Table Editor.
 - An internet connection is required.
 
 
