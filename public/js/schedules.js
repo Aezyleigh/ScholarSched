@@ -16,6 +16,8 @@ let staffView = 'table';
 let editingId = null;   // id of the schedule being edited, or null when creating
 let editingPairId = null;
 let currentSemester = null;
+let curriculumLoadError = null;
+let periodLoadError = null;
 let editingCurriculumId = null;
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -136,11 +138,13 @@ $('logout-btn').addEventListener('click', async () => {
 /* ---------- period label and dropdowns ---------- */
 
 async function loadPeriodLabel() {
-  const { data } = await sb
+  const { data, error } = await sb
     .from('scheduling_periods')
     .select('id, academic_year, semester, starts_on, ends_on')
     .eq('is_active', true)
     .maybeSingle();
+  periodLoadError = error;
+  if (error) console.error('Active scheduling period lookup failed:', error);
   currentPeriod = data || null;
   currentSemester = data?.semester || null;
   $('period-label').textContent = data
@@ -160,7 +164,16 @@ function updateSubjectOptions() {
   select.innerHTML = '<option value="">Select a course from this curriculum</option>' + rows
     .map((s) => `<option value="${esc(s.id)}">${esc(s.subject_code)} ${esc(s.subject_name)}</option>`).join('');
   if (rows.some((s) => String(s.id) === previous)) select.value = previous;
-  $('subject-note').textContent = rows.length ? '' : 'Assign courses for this program, year, and active semester in the Curriculum tab.';
+  const program = lookups.programs.find((p) => String(p.id) === programId)?.program_name || 'selected program';
+  const year = lookups.years.find((y) => String(y.id) === yearId)?.year_level || 'selected year';
+  $('subject-note').textContent = curriculumLoadError
+    ? 'Could not load curriculum from Supabase. Refresh the page and try again.'
+    : periodLoadError
+      ? 'Could not load the active scheduling period from Supabase. Refresh the page and try again.'
+      : rows.length ? ''
+        : currentSemester
+          ? `No course is assigned to ${program}, ${year}, for the active ${currentSemester} semester. Check that curriculum entry.`
+          : 'No active scheduling period is set. Activate a period before creating schedules.';
 }
 $('f-program').addEventListener('change', updateSubjectOptions);
 $('f-year').addEventListener('change', updateSubjectOptions);
@@ -181,6 +194,8 @@ async function loadLookups() {
     sb.from('curriculum_courses').select('id, subject_id, program_id, year_level_id, semester').order('semester'),
     sb.from('scheduling_periods').select('id, academic_year, semester, starts_on, ends_on, is_active').order('academic_year', { ascending: false }),
   ]);
+  curriculumLoadError = curriculum.error;
+  if (curriculum.error) console.error('Curriculum lookup failed:', curriculum.error);
   lookups = {
     subjects: subjects.data || [], programs: programs.data || [], years: years.data || [],
     teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
