@@ -172,7 +172,7 @@ function fillSelect(id, rows, labelFn, placeholder = '') {
 
 async function loadLookups() {
   const [subjects, programs, years, teachers, rooms, availability, curriculum, periods] = await Promise.all([
-    sb.from('subjects').select('id, subject_code, subject_name, units, prerequisite').order('subject_code'),
+    sb.from('subjects').select('id, subject_code, subject_name, units').order('subject_code'),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
     sb.from('teachers').select('id, teacher_name, email, max_load_hours').order('teacher_name'),
@@ -366,7 +366,7 @@ function renderCurriculum() {
   const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
   $('course-body').innerHTML = subjects.map((s) => `
     <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
-    <td>${esc(s.prerequisite || 'â€”')}</td><td><button type="button" data-edit-course="${s.id}">Edit</button>
+    <td><button type="button" data-edit-course="${s.id}">Edit</button>
     <button type="button" class="danger" data-remove-course="${s.id}">Remove</button></td></tr>`).join('');
   $('program-body').innerHTML = lookups.programs.map((p) => `
     <tr><td>${esc(p.program_name)}</td><td><button type="button" data-edit-program="${p.id}">Edit</button>
@@ -395,7 +395,6 @@ $('course-body').addEventListener('click', (e) => {
   $('course-code').value = s.subject_code;
   $('course-name').value = s.subject_name;
   $('course-units').value = s.units;
-  $('course-prerequisite').value = s.prerequisite || '';
   $('course-submit').textContent = 'Save course';
   $('course-cancel').hidden = false;
 });
@@ -433,7 +432,6 @@ $('course-form').addEventListener('submit', async (e) => {
     subject_code: $('course-code').value.trim(),
     subject_name: $('course-name').value.trim(),
     units: Number($('course-units').value),
-    prerequisite: $('course-prerequisite').value.trim() || null,
   };
   const { error } = id
     ? await sb.from('subjects').update(values).eq('id', Number(id))
