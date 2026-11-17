@@ -7,6 +7,8 @@ schedules, and lets teachers and students view them.
 ScholarSched assists the person who builds the schedule. It does not generate the
 timetable automatically.
 
+For step-by-step instructions for students, teachers, and Program Heads, see [USER_GUIDE.md](USER_GUIDE.md).
+
 ## Features
 
 - **Scheduling rules.** New or edited classes start no earlier than 8:00 AM, last exactly
@@ -57,6 +59,7 @@ timetable automatically.
 ScholarSched/
 ├── .gitignore
 ├── README.md
+├── USER_GUIDE.md        How students, teachers, and Program Heads use the app.
 ├── TESTING.md
 ├── index.html            Redirects to public/
 ├── public/
