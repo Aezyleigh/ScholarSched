@@ -418,7 +418,7 @@ $('course-body').addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-remove-course]');
   if (!btn) return;
   const course = lookups.subjects.find((row) => String(row.id) === btn.dataset.removeCourse);
-  if (!course || !confirm(`Remove ${course.subject_code} â€“ ${course.subject_name}? This cannot be undone.`)) return;
+  if (!course || !confirm(`Remove ${course.subject_code} ${course.subject_name}? This cannot be undone.`)) return;
   const { data, error } = await sb.from('subjects').delete().eq('id', Number(course.id)).select('id');
   if (error) {
     const message = error.code === '23503'
