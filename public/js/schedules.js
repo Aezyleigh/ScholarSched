@@ -151,8 +151,8 @@ function updateSubjectOptions() {
 }
 $('f-program').addEventListener('change', updateSubjectOptions);
 $('f-year').addEventListener('change', updateSubjectOptions);
-function fillSelect(id, rows, labelFn) {
-  $(id).innerHTML = rows
+function fillSelect(id, rows, labelFn, placeholder = '') {
+  $(id).innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : '') + rows
     .map((r) => `<option value="${esc(r.id)}">${esc(labelFn(r))}</option>`)
     .join('');
 }
@@ -176,8 +176,8 @@ async function loadLookups() {
   fillSelect('f-year', lookups.years, (r) => r.year_level);
   fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('f-room', lookups.rooms, (r) => r.room_name);
-  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} – ${r.subject_name}`);
-  fillSelect('curriculum-program', lookups.programs, (r) => r.program_name);
+  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} – ${r.subject_name}`, 'Select a course');
+  fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
   fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
   fillSelect('r-year', lookups.years, (r) => r.year_level);
