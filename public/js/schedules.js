@@ -202,7 +202,8 @@ function renderCurriculum() {
   const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
   $('course-body').innerHTML = subjects.map((s) => `
     <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
-    <td>${esc(s.prerequisite || '—')}</td><td><button type="button" data-edit-course="${s.id}">Edit</button></td></tr>`).join('');
+    <td>${esc(s.prerequisite || '—')}</td><td><button type="button" data-edit-course="${s.id}">Edit</button>
+    <button type="button" class="danger" data-remove-course="${s.id}">Remove</button></td></tr>`).join('');
   $('curriculum-body').innerHTML = (lookups.curriculum || []).map((c) => {
     const s = subjectById.get(String(c.subject_id));
     const p = programById.get(String(c.program_id));
@@ -226,6 +227,24 @@ $('course-body').addEventListener('click', (e) => {
   $('course-prerequisite').value = s.prerequisite || '';
   $('course-submit').textContent = 'Save course';
   $('course-cancel').hidden = false;
+});
+
+$('course-body').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-remove-course]');
+  if (!btn) return;
+  const course = lookups.subjects.find((row) => String(row.id) === btn.dataset.removeCourse);
+  if (!course || !confirm(`Remove ${course.subject_code} – ${course.subject_name}? This cannot be undone.`)) return;
+  const { data, error } = await sb.from('subjects').delete().eq('id', Number(course.id)).select('id');
+  if (error) {
+    const message = error.code === '23503'
+      ? 'Could not remove this course because it is used by a schedule or curriculum entry. Remove those references first.'
+      : 'Could not remove the course. Check your permissions and try again.';
+    return showCurriculumAlert('course-alert', 'error', message);
+  }
+  if (!data?.length) return showCurriculumAlert('course-alert', 'error', 'Course was not removed. It may no longer exist or you may not have permission.');
+  if ($('course-id').value === String(course.id)) $('course-cancel').click();
+  showCurriculumAlert('course-alert', 'ok', 'Course removed.');
+  await loadLookups();
 });
 
 $('course-cancel').addEventListener('click', () => {
