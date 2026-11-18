@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ScholarSched | Unida Christian Colleges</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/ui-enhancements.css">
 </head>
 <body>
 
@@ -31,9 +32,7 @@
         <div class="toolbar view-tools">
           <button type="button" id="s-table-view" aria-pressed="true">List</button>
           <button type="button" id="s-week-view" aria-pressed="false">Weekly timetable</button>
-          <button type="button" id="s-export-csv">Download CSV</button>
-          <button type="button" id="s-export-ics">Download calendar (.ics)</button>
-          <button type="button" id="s-export-pdf">Download PDF</button>
+          <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="s-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="s-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="s-export-pdf">PDF (.pdf)</button><button type="button" id="s-print">Print</button></div></details>
         </div>
         <div id="student-export-alert" class="alert" role="alert" hidden></div>
         <div id="student-table-view" class="table-wrap">
@@ -83,8 +82,8 @@
       <nav id="app-tabs" class="tabs" hidden>
         <button type="button" data-tab="schedules" aria-selected="true">Schedules</button>
         <button type="button" data-tab="reports" aria-selected="false">Reports</button>
-        <button type="button" data-tab="curriculum" aria-selected="false">Curriculum</button>
-        <button type="button" data-tab="setup" aria-selected="false">Rooms &amp; periods</button>
+        <button type="button" class="admin-only" data-tab="curriculum" aria-selected="false">Curriculum</button>
+        <button type="button" class="admin-only" data-tab="setup" aria-selected="false">Rooms &amp; periods</button>
       </nav>
 
       <div id="tab-schedules">
@@ -96,14 +95,12 @@
             <label>Year level <select id="f-year" required></select></label>
             <label>Teacher <select id="f-teacher" required></select></label>
             <label>Room <select id="f-room" required></select></label>
-            <label>Day
-              <select id="f-day" required>
+            <div class="field"><span id="day-label" class="field-label">Day(s) <small class="muted">pick one or several</small></span><div id="day-chips" class="chips" role="group" aria-labelledby="day-label"></div><select id="f-day" data-no-combo>
                 <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option>
                 <option value="Thursday">Thursday</option><option value="Friday">Friday</option><option value="Saturday">Saturday</option>
                 <option value="Monday|Wednesday">Monday / Wednesday (paired)</option>
                 <option value="Tuesday|Thursday">Tuesday / Thursday (paired)</option>
-              </select>
-            </label>
+              </select><small id="day-error" class="error-text" role="alert"></small></div>
             <label>Start time <input type="time" id="f-start" min="08:00" required></label>
             <label>End time <input type="time" id="f-end" readonly required aria-describedby="duration-note"></label>
             <p id="duration-note" class="muted">Each class is 2 hours 30 minutes.</p>
@@ -121,9 +118,7 @@
             <label>Search schedules <input type="search" id="search-input" placeholder="Subject, teacher, room, day..."></label>
             <button type="button" id="staff-list-toggle" aria-pressed="true">List</button>
             <button type="button" id="staff-weekly-toggle" aria-pressed="false">Weekly timetable</button>
-            <button type="button" id="staff-export-csv">Download CSV</button>
-            <button type="button" id="staff-export-ics">Download calendar (.ics)</button>
-            <button type="button" id="staff-export-pdf">Download PDF</button>
+            <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="staff-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="staff-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="staff-export-pdf">PDF (.pdf)</button><button type="button" id="staff-print">Print</button></div></details>
           </div>
           <div class="toolbar admin-only" id="bulk-tools">
             <button type="button" id="bulk-publish" class="primary">Publish selected drafts</button>
@@ -165,10 +160,7 @@
             <label id="r-year-wrap">Year level <select id="r-year"></select></label>
             <label id="r-teacher-wrap" hidden>Teacher <select id="r-teacher"></select></label>
             <label id="r-room-wrap" hidden>Room <select id="r-room"></select></label>
-            <button type="button" id="r-export-csv">Download report CSV</button>
-            <button type="button" id="r-export-ics">Download report calendar (.ics)</button>
-            <button type="button" id="r-export-pdf">Download report PDF</button>
-            <button type="button" id="r-print">Print report</button>
+            <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="r-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="r-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="r-export-pdf">PDF (.pdf)</button><button type="button" id="r-print">Print</button></div></details>
           </div>
           <div id="r-export-alert" class="alert" role="alert" hidden></div>
           <div id="report-output"></div>
@@ -176,7 +168,8 @@
       </div>
 
       <div id="tab-curriculum" hidden>
-        <section>
+        <div class="subtabs" role="tablist" aria-label="Curriculum data" data-subtabs><button type="button" role="tab" data-sub="sub-courses">Courses</button><button type="button" role="tab" data-sub="sub-curriculum">Program curriculum</button><button type="button" role="tab" data-sub="sub-programs">Programs</button><button type="button" role="tab" data-sub="sub-teachers">Teachers</button></div>
+        <section id="sub-courses" role="tabpanel">
           <h2>Course catalog</h2>
           <form id="course-form" class="grid">
             <input type="hidden" id="course-id">
@@ -195,7 +188,7 @@
             </table>
           </div>
         </section>
-        <section>
+        <section id="sub-curriculum" role="tabpanel">
           <h2>Program curriculum</h2>
           <form id="curriculum-form" class="toolbar">
             <input type="hidden" id="curriculum-id">
@@ -218,7 +211,7 @@
             </table>
           </div>
         </section>
-        <section>
+        <section id="sub-programs" role="tabpanel">
           <h2>Programs</h2>
           <form id="program-form" class="toolbar">
             <input type="hidden" id="program-id">
@@ -229,7 +222,7 @@
           <div id="program-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap"><table><thead><tr><th>Program</th><th>Actions</th></tr></thead><tbody id="program-body"></tbody></table></div>
         </section>
-        <section>
+        <section id="sub-teachers" role="tabpanel">
           <h2>Teachers</h2>
           <form id="teacher-form" class="grid">
             <input type="hidden" id="teacher-id">
@@ -247,7 +240,8 @@
       </div>
 
       <div id="tab-setup" hidden>
-        <section>
+        <div class="subtabs" role="tablist" aria-label="Rooms and periods" data-subtabs><button type="button" role="tab" data-sub="sub-rooms">Rooms</button><button type="button" role="tab" data-sub="sub-periods">Scheduling periods</button></div>
+        <section id="sub-rooms" role="tabpanel">
           <h2>Rooms</h2>
           <form id="room-form" class="toolbar">
             <input type="hidden" id="room-id">
@@ -259,7 +253,7 @@
           <div id="room-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap"><table><thead><tr><th>Room</th><th>Type</th><th>Actions</th></tr></thead><tbody id="room-body"></tbody></table></div>
         </section>
-        <section>
+        <section id="sub-periods" role="tabpanel">
           <h2>Start a scheduling period</h2>
           <form id="period-form" class="grid">
             <label>Academic year <input id="period-year" placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
@@ -281,6 +275,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/ui-enhancements.js"></script>
   <script src="js/schedules.js"></script>
 </body>
 </html>
