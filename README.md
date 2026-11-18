@@ -75,12 +75,13 @@ ScholarSched/
     ├── migration_v3.sql Faculty availability, curriculum, paired days and validation
     ├── migration_v4.sql Period dates/lifecycle/copy and conflict suggestions
     ├── migration_v5.sql Full-break-spanning class validation
+    ├── migration_v6.sql Shared meetings across programs
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, and v5 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, and v6 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
