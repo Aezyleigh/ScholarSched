@@ -99,7 +99,7 @@ Reports use schedules in the active period. Check the selected report and filter
 
 - **No courses in the schedule form:** Check that the active period has the right semester, then assign courses to that program, year level, and semester in **Curriculum**.
 - **No schedule appears:** Students and teachers see published schedules only. Confirm the correct program/year or teacher and active period are selected.
-- **A save is rejected:** Check the displayed reason. Confirm the teacher is available, the room is free, and the class does not break the 30-minute gap, 2.5-hour duration, or weekly load rules.
+- **A save is rejected:** Check the displayed reason. Confirm the teacher is available, the room is free, and the class does not break the 30-minute gap, 2.5-hour duration, or weekly load rules. A class may span an entire configured break, but cannot overlap only part of one.
 - **Calendar download asks for dates:** A Program Head needs to edit the active period and enter both dates.
 - **A record cannot be removed:** It is still referenced by a schedule or curriculum entry. Reassign or remove the dependent entry first.
 - **Login does not work:** Check the email and password with the Program Head. Staff accounts and roles must be set up before sign-in.

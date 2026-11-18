@@ -62,7 +62,8 @@ end time should fill automatically as 10:30 AM.
 | --- | --- | --- |
 | C1 | Save the schedule above | "Saved as draft." It appears with status DRAFT |
 | C2 | Same room, teacher, or cohort overlaps Monday; try 8:30 AM | Rejected with a relevant conflict |
-| C3 | Change start to 10:00 AM | Rejected because the 2.5-hour class overlaps the fixed lunch break |
+| C3 | Change start to 10:00 AM | Rejected because the class only partially overlaps the lunch break |
+| C3a | Schedule 11:30 AM–2:00 PM with all other resources free | Saved as draft; the class spans the full lunch break |
 | C4 | Try to start before 8:00 AM | Browser blocks it; the database also rejects it |
 | C5 | Use a course not assigned to the selected program/year/active semester | Course is not selectable |
 | C6 | Select a different day at 8:00 AM | Saved if its room, teacher, and cohort are free |
