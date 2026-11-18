@@ -163,8 +163,10 @@ function updateSubjectOptions() {
     .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === currentSemester)
     .map((c) => String(c.subject_id)));
   const rows = lookups.subjects.filter((s) => assigned.has(String(s.id)));
-  fillSearchableDropdown('f-subject-search', 'f-subject-options', 'f-subject', rows,
-    (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course from this curriculum');
+  const select = $('f-subject');
+  const previous = select.value;
+  fillSelect('f-subject', rows, (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course from this curriculum');
+  if (rows.some((s) => String(s.id) === previous)) select.value = previous;
   const program = lookups.programs.find((p) => String(p.id) === programId)?.program_name || 'selected program';
   const year = lookups.years.find((y) => String(y.id) === yearId)?.year_level || 'selected year';
   $('subject-note').textContent = curriculumLoadError
@@ -184,44 +186,6 @@ function fillSelect(id, rows, labelFn, placeholder = '') {
     .join('');
 }
 
-function fillSearchableDropdown(inputId, listId, selectId, rows, labelFn, placeholder = '', selectFirst = false) {
-  const select = $(selectId);
-  const previous = select.value;
-  fillSelect(selectId, rows, labelFn, placeholder);
-  $(listId).innerHTML = rows.map((row) => `<option value="${esc(labelFn(row))}"></option>`).join('');
-  const selected = rows.find((row) => String(row.id) === previous) || (selectFirst ? rows[0] : null);
-  setSearchableSelection(inputId, selectId, rows, labelFn, selected?.id);
-}
-
-function setSearchableSelection(inputId, selectId, rows, labelFn, id) {
-  const row = rows.find((item) => String(item.id) === String(id));
-  $(selectId).value = row ? String(row.id) : '';
-  $(inputId).value = row ? labelFn(row) : '';
-  $(inputId).setCustomValidity('');
-}
-
-function syncSearchableSelection(inputId, selectId, rows, labelFn) {
-  const input = $(inputId);
-  const query = input.value.trim().toLocaleLowerCase();
-  const row = rows.find((item) => labelFn(item).toLocaleLowerCase() === query);
-  $(selectId).value = row ? String(row.id) : '';
-  input.setCustomValidity(query && !row ? 'Choose an option from the dropdown.' : '');
-  return row;
-}
-
-$('f-subject-search').addEventListener('input', () => {
-  const rows = [...$('f-subject').options].filter((option) => option.value)
-    .map((option) => ({ id: option.value, label: option.textContent }));
-  syncSearchableSelection('f-subject-search', 'f-subject', rows, (row) => row.label);
-});
-$('f-program-search').addEventListener('input', () => {
-  syncSearchableSelection('f-program-search', 'f-program', lookups.programs, (r) => r.program_name);
-  updateSubjectOptions();
-});
-$('f-teacher-search').addEventListener('input', () =>
-  syncSearchableSelection('f-teacher-search', 'f-teacher', lookups.teachers, (r) => r.teacher_name));
-$('f-room-search').addEventListener('input', () =>
-  syncSearchableSelection('f-room-search', 'f-room', lookups.rooms, (r) => r.room_name));
 async function loadLookups() {
   const [subjects, programs, years, teachers, rooms, availability, curriculum, periods] = await Promise.all([
     sb.from('subjects').select('id, subject_code, subject_name, units').order('subject_code'),
@@ -240,10 +204,10 @@ async function loadLookups() {
     teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
     curriculum: curriculum.data || [], periods: periods.data || [],
   };
-  fillSearchableDropdown('f-program-search', 'f-program-options', 'f-program', lookups.programs, (r) => r.program_name, '', true);
+  fillSelect('f-program', lookups.programs, (r) => r.program_name);
   fillSelect('f-year', lookups.years, (r) => r.year_level);
-  fillSearchableDropdown('f-teacher-search', 'f-teacher-options', 'f-teacher', lookups.teachers, (r) => r.teacher_name, '', true);
-  fillSearchableDropdown('f-room-search', 'f-room-options', 'f-room', lookups.rooms, (r) => r.room_name, '', true);
+  fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
+  fillSelect('f-room', lookups.rooms, (r) => r.room_name);
   fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} — ${r.subject_name}`, 'Select a course');
   fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
   fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
@@ -852,7 +816,7 @@ async function showConflictSuggestions(args, days) {
 }
 $('form-alert').addEventListener('click', (e) => {
   const room = e.target.closest('[data-suggest-room]');
-  if (room) setSearchableSelection('f-room-search', 'f-room', lookups.rooms, (r) => r.room_name, room.dataset.suggestRoom);
+  if (room) $('f-room').value = room.dataset.suggestRoom;
   const time = e.target.closest('[data-suggest-time]');
   if (time) { $('f-start').value = time.dataset.suggestTime.slice(0, 5); updateClassEnd(); }
 });
@@ -909,10 +873,7 @@ function resetForm() {
   editingId = null;
   editingPairId = null;
   $('schedule-form').reset();
-  setSearchableSelection('f-program-search', 'f-program', lookups.programs, (r) => r.program_name, $('f-program').value);
-  setSearchableSelection('f-teacher-search', 'f-teacher', lookups.teachers, (r) => r.teacher_name, $('f-teacher').value);
-  setSearchableSelection('f-room-search', 'f-room', lookups.rooms, (r) => r.room_name, $('f-room').value);
-  updateSubjectOptions();
+
   $('form-title').textContent = 'Create schedule';
   $('form-submit').textContent = 'Check conflicts and save as draft';
   $('form-cancel').hidden = true;
@@ -931,14 +892,12 @@ function startEdit(id) {
   if (!s) return;
   editingId = id;
   editingPairId = s.schedule_pair_id;
-  setSearchableSelection('f-program-search', 'f-program', lookups.programs, (r) => r.program_name, s.program_id);
+  $('f-program').value = s.program_id;
   $('f-year').value = s.year_level_id;
   updateSubjectOptions();
-  const subjectOptions = [...$('f-subject').options].filter((option) => option.value)
-    .map((option) => ({ id: option.value, label: option.textContent }));
-  setSearchableSelection('f-subject-search', 'f-subject', subjectOptions, (row) => row.label, s.subject_id);
-  setSearchableSelection('f-teacher-search', 'f-teacher', lookups.teachers, (r) => r.teacher_name, s.teacher_id);
-  setSearchableSelection('f-room-search', 'f-room', lookups.rooms, (r) => r.room_name, s.room_id);
+  $('f-subject').value = s.subject_id;
+  $('f-teacher').value = s.teacher_id;
+  $('f-room').value = s.room_id;
   const pairedDays = editingPairId
     ? staffRows.filter((r) => r.schedule_pair_id === editingPairId).map((r) => r.day).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
     : [];
