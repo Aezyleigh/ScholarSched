@@ -1026,7 +1026,7 @@ function renderReport() {
   reportScheduleRows = [];
   reportTitle = 'Schedule report';
   $('r-export-alert').hidden = true;
-  const meta = `<p class="muted report-meta">${esc($('period-label').textContent)} Â· Generated ${esc(new Date().toLocaleDateString())}</p>`;
+  const meta = `<p class="muted report-meta">${esc($('period-label').textContent)} — Generated ${esc(new Date().toLocaleDateString())}</p>`;
   const pick = (id, list, key) => list.find((x) => String(x.id) === $(id).value);
 
   if (type === 'class') {
