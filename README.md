@@ -12,7 +12,7 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
 ## Features
 
 - **Scheduling rules.** New or edited classes start no earlier than 8:00 AM, last exactly
-  2 hours 30 minutes, fit within faculty availability, and keep the configured lunch break.
+  2 hours 30 minutes and fit within faculty availability. Classes may span an entire configured break,
   Faculty and the same Program + Year Level need at least 30 minutes between classes.
   Physical room conflicts and other overlapping classes are blocked.
 - **Draft and publish workflow.** New schedules are saved as private drafts. The Program Head
@@ -74,12 +74,13 @@ ScholarSched/
     ├── migration_v2.sql Online rooms, breaks, max load and schedule validation
     ├── migration_v3.sql Faculty availability, curriculum, paired days and validation
     ├── migration_v4.sql Period dates/lifecycle/copy and conflict suggestions
+    ├── migration_v5.sql Full-break-spanning class validation
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, and v4 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, and v5 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
