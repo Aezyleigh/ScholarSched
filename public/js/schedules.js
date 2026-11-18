@@ -24,6 +24,10 @@ const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const DAY_START = 7 * 60;   // room availability is shown between 7:00 AM ...
 const DAY_END = 20 * 60;    // ... and 8:00 PM
 
+function cleanAlertText(value) {
+  return String(value ?? '').replaceAll('â€“', ' ');
+}
+
 function esc(value) {
   const div = document.createElement('div');
   div.textContent = value ?? '';
@@ -221,7 +225,7 @@ async function loadLookups() {
 function showSetupAlert(id, type, message) {
   const box = $(id);
   box.className = `alert ${type}`;
-  box.textContent = message;
+  box.textContent = cleanAlertText(message);
   box.hidden = false;
 }
 
@@ -370,7 +374,7 @@ $('period-form').addEventListener('submit', async (e) => {
 function showCurriculumAlert(id, type, message) {
   const box = $(id);
   box.className = `alert ${type}`;
-  box.textContent = message;
+  box.textContent = cleanAlertText(message);
   box.hidden = false;
 }
 
@@ -558,6 +562,15 @@ $('teacher-form').addEventListener('submit', async (e) => {
   await loadLookups();
 });
 
+$('curriculum-course-search').addEventListener('input', (e) => {
+  const query = e.target.value.trim().toLocaleLowerCase();
+  const select = $('curriculum-subject');
+  const selected = select.value;
+  fillSelect('curriculum-subject', lookups.subjects.filter((s) =>
+    `${s.subject_code} ${s.subject_name}`.toLocaleLowerCase().includes(query)),
+  (s) => `${s.subject_code} ${s.subject_name}`, 'Select a course');
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+});
 $('curriculum-cancel').addEventListener('click', () => {
   editingCurriculumId = null;
   $('curriculum-form').reset();
@@ -776,8 +789,8 @@ $('schedule-body').addEventListener('click', async (e) => {
 function showFormAlert(type, message, list = []) {
   const box = $('form-alert');
   box.className = `alert ${type}`;
-  box.innerHTML = esc(message) +
-    (list.length ? `<ul>${list.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '');
+  box.innerHTML = esc(cleanAlertText(message)) +
+    (list.length ? `<ul>${list.map((c) => `<li>${esc(cleanAlertText(c))}</li>`).join('')}</ul>` : '');
   box.hidden = false;
 }
 
