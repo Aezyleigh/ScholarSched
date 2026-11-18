@@ -163,10 +163,8 @@ function updateSubjectOptions() {
     .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === currentSemester)
     .map((c) => String(c.subject_id)));
   const rows = lookups.subjects.filter((s) => assigned.has(String(s.id)));
-  const select = $('f-subject');
-  const previous = select.value;
-  fillSelect('f-subject', rows, (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course from this curriculum');
-  if (rows.some((s) => String(s.id) === previous)) select.value = previous;
+  setComboboxOptions('f-subject-search', rows,
+    (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course from this curriculum');
   const program = lookups.programs.find((p) => String(p.id) === programId)?.program_name || 'selected program';
   const year = lookups.years.find((y) => String(y.id) === yearId)?.year_level || 'selected year';
   $('subject-note').textContent = curriculumLoadError
@@ -178,14 +176,153 @@ function updateSubjectOptions() {
           ? `No course is assigned to ${program}, ${year}, for the active ${currentSemester} semester. Check that curriculum entry.`
           : 'No active scheduling period is set. Activate a period before creating schedules.';
 }
-$('f-program').addEventListener('change', updateSubjectOptions);
-$('f-year').addEventListener('change', updateSubjectOptions);
+
 function fillSelect(id, rows, labelFn, placeholder = '') {
   $(id).innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : '') + rows
     .map((r) => `<option value="${esc(r.id)}">${esc(labelFn(r))}</option>`)
     .join('');
 }
 
+const scheduleComboboxes = new Map();
+
+function initCombobox(inputId, selectId, listId, toggleId, labelFn, onSelect = () => {}) {
+  const state = { inputId, selectId, listId, toggleId, labelFn, onSelect, rows: [], matches: [], activeIndex: -1, open: false };
+  scheduleComboboxes.set(inputId, state);
+  const input = $(inputId);
+  const list = $(listId);
+  const toggle = $(toggleId);
+
+  input.addEventListener('focus', () => {
+    const selected = state.rows.find((row) => String(row.id) === $(selectId).value);
+    if (selected && input.value === labelFn(selected)) input.value = '';
+    openCombobox(state);
+  });
+  input.addEventListener('input', () => {
+    const query = input.value.trim().toLocaleLowerCase();
+    state.matches = state.rows.filter((row) => labelFn(row).toLocaleLowerCase().includes(query));
+    state.activeIndex = state.matches.length ? 0 : -1;
+    const match = state.rows.find((row) => labelFn(row).toLocaleLowerCase() === query);
+    $(selectId).value = match ? String(match.id) : '';
+    input.setCustomValidity(query && !match ? 'Choose an option from the list.' : '');
+    renderCombobox(state);
+    onSelect(match);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!state.open) openCombobox(state);
+      else if (state.matches.length) {
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        state.activeIndex = (state.activeIndex + delta + state.matches.length) % state.matches.length;
+        renderCombobox(state);
+      }
+    } else if (event.key === 'Enter' && state.open && state.activeIndex >= 0) {
+      event.preventDefault();
+      selectComboboxOption(state, state.matches[state.activeIndex]);
+    } else if (event.key === 'Escape' && state.open) {
+      event.preventDefault();
+      closeCombobox(state);
+      const selected = state.rows.find((row) => String(row.id) === $(selectId).value);
+      if (selected) input.value = labelFn(selected);
+    }
+  });
+  input.addEventListener('blur', () => {
+    closeCombobox(state);
+    const selected = state.rows.find((row) => String(row.id) === $(selectId).value);
+    if (!input.value.trim() && selected) input.value = labelFn(selected);
+  });
+  toggle.addEventListener('pointerdown', (event) => event.preventDefault());
+  toggle.addEventListener('click', () => {
+    if (state.open) {
+      closeCombobox(state);
+      const selected = state.rows.find((row) => String(row.id) === $(selectId).value);
+      if (!input.value.trim() && selected) input.value = labelFn(selected);
+    }
+    else { input.focus(); openCombobox(state); }
+  });
+  list.addEventListener('pointerdown', (event) => {
+    const option = event.target.closest('[data-option-index]');
+    if (!option) return;
+    event.preventDefault();
+    selectComboboxOption(state, state.matches[Number(option.dataset.optionIndex)]);
+  });
+  list.addEventListener('click', (event) => {
+    const option = event.target.closest('[data-option-index]');
+    if (option && state.open) selectComboboxOption(state, state.matches[Number(option.dataset.optionIndex)]);
+  });
+}
+
+function renderCombobox(state) {
+  const input = $(state.inputId);
+  const list = $(state.listId);
+  const query = input.value.trim().toLocaleLowerCase();
+  state.matches = state.rows.filter((row) => state.labelFn(row).toLocaleLowerCase().includes(query));
+  list.innerHTML = state.matches.map((row, index) => {
+    const active = index === state.activeIndex;
+    const selected = String(row.id) === $(state.selectId).value;
+    return `<div id="${state.listId}-option-${index}" role="option" data-option-index="${index}" aria-selected="${selected}" class="${active ? 'active' : ''}">${esc(state.labelFn(row))}</div>`;
+  }).join('');
+  if (!state.matches.length) list.innerHTML = '<div class="combobox-empty" role="option" aria-disabled="true">No matches</div>';
+  list.hidden = !state.open;
+  if (state.open && state.activeIndex >= 0) list.children[state.activeIndex]?.scrollIntoView({ block: 'nearest' });
+  input.setAttribute('aria-expanded', String(state.open));
+  input.setAttribute('aria-activedescendant', state.open && state.activeIndex >= 0 ? `${state.listId}-option-${state.activeIndex}` : '');
+  $(state.toggleId).setAttribute('aria-expanded', String(state.open));
+}
+
+function openCombobox(state) {
+  state.open = true;
+  const selected = state.rows.findIndex((row) => String(row.id) === $(state.selectId).value);
+  state.activeIndex = selected >= 0 ? selected : (state.rows.length ? 0 : -1);
+  renderCombobox(state);
+}
+
+function closeCombobox(state) {
+  state.open = false;
+  state.activeIndex = -1;
+  renderCombobox(state);
+}
+
+function selectComboboxOption(state, row) {
+  if (!row) return;
+  $(state.selectId).value = String(row.id);
+  $(state.inputId).value = state.labelFn(row);
+  $(state.inputId).setCustomValidity('');
+  closeCombobox(state);
+  state.onSelect(row);
+}
+
+function setComboboxOptions(inputId, rows, labelFn, placeholder = '', selectFirst = false, selectedId = null) {
+  const state = scheduleComboboxes.get(inputId);
+  if (!state) return;
+  const select = $(state.selectId);
+  const previous = selectedId === null ? select.value : String(selectedId);
+  state.rows = rows;
+  state.labelFn = labelFn;
+  fillSelect(state.selectId, rows, labelFn, placeholder);
+  const selected = rows.find((row) => String(row.id) === previous) || (selectFirst ? rows[0] : null);
+  select.value = selected ? String(selected.id) : '';
+  $(inputId).value = selected ? labelFn(selected) : '';
+  $(inputId).setCustomValidity('');
+  renderCombobox(state);
+}
+
+function setComboboxSelection(inputId, id, notify = false) {
+  const state = scheduleComboboxes.get(inputId);
+  const row = state?.rows.find((item) => String(item.id) === String(id));
+  if (!state || !row) return;
+  $(state.selectId).value = String(row.id);
+  $(inputId).value = state.labelFn(row);
+  $(inputId).setCustomValidity('');
+  renderCombobox(state);
+  if (notify) state.onSelect(row);
+}
+
+initCombobox('f-subject-search', 'f-subject', 'f-subject-options', 'f-subject-toggle', (row) => row.label);
+initCombobox('f-program-search', 'f-program', 'f-program-options', 'f-program-toggle', (row) => row.program_name, updateSubjectOptions);
+initCombobox('f-teacher-search', 'f-teacher', 'f-teacher-options', 'f-teacher-toggle', (row) => row.teacher_name);
+initCombobox('f-room-search', 'f-room', 'f-room-options', 'f-room-toggle', (row) => row.room_name);
+$('f-year').addEventListener('change', updateSubjectOptions);
 async function loadLookups() {
   const [subjects, programs, years, teachers, rooms, availability, curriculum, periods] = await Promise.all([
     sb.from('subjects').select('id, subject_code, subject_name, units').order('subject_code'),
@@ -204,10 +341,10 @@ async function loadLookups() {
     teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
     curriculum: curriculum.data || [], periods: periods.data || [],
   };
-  fillSelect('f-program', lookups.programs, (r) => r.program_name);
+  setComboboxOptions('f-program-search', lookups.programs, (r) => r.program_name, '', true);
   fillSelect('f-year', lookups.years, (r) => r.year_level);
-  fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
-  fillSelect('f-room', lookups.rooms, (r) => r.room_name);
+  setComboboxOptions('f-teacher-search', lookups.teachers, (r) => r.teacher_name, '', true);
+  setComboboxOptions('f-room-search', lookups.rooms, (r) => r.room_name, '', true);
   fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} — ${r.subject_name}`, 'Select a course');
   fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
   fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
@@ -816,7 +953,7 @@ async function showConflictSuggestions(args, days) {
 }
 $('form-alert').addEventListener('click', (e) => {
   const room = e.target.closest('[data-suggest-room]');
-  if (room) $('f-room').value = room.dataset.suggestRoom;
+  if (room) setComboboxSelection('f-room-search', room.dataset.suggestRoom);
   const time = e.target.closest('[data-suggest-time]');
   if (time) { $('f-start').value = time.dataset.suggestTime.slice(0, 5); updateClassEnd(); }
 });
@@ -873,6 +1010,10 @@ function resetForm() {
   editingId = null;
   editingPairId = null;
   $('schedule-form').reset();
+  setComboboxSelection('f-program-search', $('f-program').value);
+  setComboboxSelection('f-teacher-search', $('f-teacher').value);
+  setComboboxSelection('f-room-search', $('f-room').value);
+  updateSubjectOptions();
 
   $('form-title').textContent = 'Create schedule';
   $('form-submit').textContent = 'Check conflicts and save as draft';
@@ -892,12 +1033,12 @@ function startEdit(id) {
   if (!s) return;
   editingId = id;
   editingPairId = s.schedule_pair_id;
-  $('f-program').value = s.program_id;
   $('f-year').value = s.year_level_id;
+  setComboboxSelection('f-program-search', s.program_id);
   updateSubjectOptions();
-  $('f-subject').value = s.subject_id;
-  $('f-teacher').value = s.teacher_id;
-  $('f-room').value = s.room_id;
+  setComboboxSelection('f-subject-search', s.subject_id);
+  setComboboxSelection('f-teacher-search', s.teacher_id);
+  setComboboxSelection('f-room-search', s.room_id);
   const pairedDays = editingPairId
     ? staffRows.filter((r) => r.schedule_pair_id === editingPairId).map((r) => r.day).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
     : [];

@@ -91,11 +91,44 @@
         <section id="create-panel" hidden>
           <h2 id="form-title">Create schedule</h2>
           <form id="schedule-form" class="grid">
-            <label>Subject <select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
-            <label>Program <select id="f-program" required></select></label>
+            <div class="schedule-field">
+  <label for="f-subject-search">Subject</label>
+  <div class="combobox">
+    <input id="f-subject-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-subject-options" autocomplete="off" required>
+    <button type="button" id="f-subject-toggle" class="combobox-toggle" aria-controls="f-subject-options" aria-label="Show subject options" aria-expanded="false" tabindex="-1"><span aria-hidden="true">▾</span></button>
+    <div id="f-subject-options" class="combobox-options" role="listbox" hidden></div>
+  </div>
+  <select id="f-subject" hidden></select>
+  <small id="subject-note" class="muted"></small>
+</div>
+            <div class="schedule-field">
+  <label for="f-program-search">Program</label>
+  <div class="combobox">
+    <input id="f-program-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-program-options" autocomplete="off" required>
+    <button type="button" id="f-program-toggle" class="combobox-toggle" aria-controls="f-program-options" aria-label="Show program options" aria-expanded="false" tabindex="-1"><span aria-hidden="true">▾</span></button>
+    <div id="f-program-options" class="combobox-options" role="listbox" hidden></div>
+  </div>
+  <select id="f-program" hidden></select>
+</div>
             <label>Year level <select id="f-year" required></select></label>
-            <label>Teacher <select id="f-teacher" required></select></label>
-            <label>Room <select id="f-room" required></select></label>
+            <div class="schedule-field">
+  <label for="f-teacher-search">Teacher</label>
+  <div class="combobox">
+    <input id="f-teacher-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-teacher-options" autocomplete="off" required>
+    <button type="button" id="f-teacher-toggle" class="combobox-toggle" aria-controls="f-teacher-options" aria-label="Show teacher options" aria-expanded="false" tabindex="-1"><span aria-hidden="true">▾</span></button>
+    <div id="f-teacher-options" class="combobox-options" role="listbox" hidden></div>
+  </div>
+  <select id="f-teacher" hidden></select>
+</div>
+            <div class="schedule-field">
+  <label for="f-room-search">Room</label>
+  <div class="combobox">
+    <input id="f-room-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-room-options" autocomplete="off" required>
+    <button type="button" id="f-room-toggle" class="combobox-toggle" aria-controls="f-room-options" aria-label="Show room options" aria-expanded="false" tabindex="-1"><span aria-hidden="true">▾</span></button>
+    <div id="f-room-options" class="combobox-options" role="listbox" hidden></div>
+  </div>
+  <select id="f-room" hidden></select>
+</div>
             <label>Day
               <select id="f-day" required>
                 <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option>
