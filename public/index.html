@@ -91,11 +91,11 @@
         <section id="create-panel" hidden>
           <h2 id="form-title">Create schedule</h2>
           <form id="schedule-form" class="grid">
-            <label>Subject <select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
-            <label>Program <select id="f-program" required></select></label>
+            <label>Subject <input id="f-subject-search" type="search" placeholder="Search code or course name" autocomplete="off"><select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
+            <label>Program <input id="f-program-search" type="search" placeholder="Search programs" autocomplete="off"><select id="f-program" required></select></label>
             <label>Year level <select id="f-year" required></select></label>
-            <label>Teacher <select id="f-teacher" required></select></label>
-            <label>Room <select id="f-room" required></select></label>
+            <label>Teacher <input id="f-teacher-search" type="search" placeholder="Search teachers" autocomplete="off"><select id="f-teacher" required></select></label>
+            <label>Room <input id="f-room-search" type="search" placeholder="Search rooms" autocomplete="off"><select id="f-room" required></select></label>
             <label>Day
               <select id="f-day" required>
                 <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option>

@@ -25,7 +25,7 @@ const DAY_START = 7 * 60;   // room availability is shown between 7:00 AM ...
 const DAY_END = 20 * 60;    // ... and 8:00 PM
 
 function cleanAlertText(value) {
-  return String(value ?? '').replaceAll('â€“', ' ');
+  return String(value ?? '').replaceAll('—', ' ');
 }
 
 function esc(value) {
@@ -703,12 +703,12 @@ function renderStaffTable() {
 
   $('schedule-body').innerHTML = rows.map((s) => `
     <tr>${isAdmin ? `<td><input type=\"checkbox\" data-select-schedule=\"${s.id}\" aria-label=\"Select ${esc(s.subject_code)}\"></td>` : ''}
-      <td>${esc(s.subject_code)} â€“ ${esc(s.subject_name)}</td>
+      <td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
       <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
       <td>${esc(s.teacher_name)}</td>
       <td>${esc(s.room_name)}</td>
       <td>${esc(s.day)}</td>
-      <td>${to12h(s.start_time)} â€“ ${to12h(s.end_time)}</td>
+      <td>${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
       <td><span class="badge ${esc(s.status)}">${esc(s.status)}</span></td>
       ${isAdmin ? `<td class="actions">${actionButtons(s)}</td>` : ''}
     </tr>`).join('');
@@ -977,12 +977,12 @@ $('app-tabs').addEventListener('click', (e) => {
 $('r-print').addEventListener('click', () => window.print());
 
 const COLS = {
-  subject: ['Subject', (s) => `${esc(s.subject_code)} â€“ ${esc(s.subject_name)}`],
+  subject: ['Subject', (s) => `${esc(s.subject_code)} — ${esc(s.subject_name)}`],
   group: ['Program and year', (s) => `${esc(s.program_name)}, ${esc(s.year_level)}`],
   teacher: ['Teacher', (s) => esc(s.teacher_name)],
   room: ['Room', (s) => esc(s.room_name)],
   day: ['Day', (s) => esc(s.day)],
-  time: ['Time', (s) => `${to12h(s.start_time)} â€“ ${to12h(s.end_time)}`],
+  time: ['Time', (s) => `${to12h(s.start_time)} — ${to12h(s.end_time)}`],
   status: ['Status', (s) => `<span class="badge ${esc(s.status)}">${esc(s.status)}</span>`],
 };
 
@@ -1007,12 +1007,12 @@ function freeSlots(roomRows) {
   return free.filter(([a, b]) => b > a);
 }
 
-const slotText = ([a, b]) => `${to12h(minToTime(a))} â€“ ${to12h(minToTime(b))}`;
+const slotText = ([a, b]) => `${to12h(minToTime(a))} — ${to12h(minToTime(b))}`;
 
 function availabilityText(teacherId) {
   return lookups.availability.filter((a) => String(a.teacher_id) === String(teacherId))
     .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day))
-    .map((a) => `${a.day.slice(0, 3)} ${to12h(a.start_time)}â€“${to12h(a.end_time)}`).join('; ') || 'Not configured';
+    .map((a) => `${a.day.slice(0, 3)} ${to12h(a.start_time)}—${to12h(a.end_time)}`).join('; ') || 'Not configured';
 }
 function renderReport() {
   if (!currentUser || currentUser.role !== 'admin') return;
@@ -1077,7 +1077,7 @@ function renderReport() {
     reportTitle = `Room availability: ${room.room_name}`; reportScheduleRows = roomRows;
     const body = DAY_ORDER.map((day) => {
       const dayRows = sortSchedules(roomRows.filter((s) => s.day === day));
-      const occupied = dayRows.map((s) => `${to12h(s.start_time)} â€“ ${to12h(s.end_time)} (${esc(s.subject_code)})`).join('<br>') || '<span class="muted">None</span>';
+      const occupied = dayRows.map((s) => `${to12h(s.start_time)} — ${to12h(s.end_time)} (${esc(s.subject_code)})`).join('<br>') || '<span class="muted">None</span>';
       const free = freeSlots(dayRows).map(slotText).join('<br>') || '<span class="muted">Fully booked</span>';
       return `<tr><td>${day}</td><td>${occupied}</td><td>${free}</td></tr>`;
     }).join('');
@@ -1298,12 +1298,12 @@ async function loadStudentSchedule() {
   studentRows = data;
   body.innerHTML = data.map((s) => `
     <tr>
-      <td>${esc(s.subject_code)} â€“ ${esc(s.subject_name)}</td>
+      <td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
       <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
       <td>${esc(s.teacher_name)}</td>
       <td>${esc(s.room_name)}</td>
       <td>${esc(s.day)}</td>
-      <td>${to12h(s.start_time)} â€“ ${to12h(s.end_time)}</td>
+      <td>${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
     </tr>`).join('');
 
   empty.hidden = data.length > 0;
