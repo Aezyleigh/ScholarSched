@@ -209,7 +209,7 @@ async function loadLookups() {
   fillSelect('f-year', lookups.years, (r) => r.year_level);
   fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('f-room', lookups.rooms, (r) => r.room_name);
-  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} ${r.subject_name}`, 'Select a course');
+  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} — ${r.subject_name}`, 'Select a course');
   fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
   fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
@@ -399,7 +399,7 @@ function renderCurriculum() {
     const p = programById.get(String(c.program_id));
     const y = yearById.get(String(c.year_level_id));
     if (!s || !p || !y) return '';
-    return `<tr><td>${esc(s.subject_code)} ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
+    return `<tr><td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
       <td>${esc(y.year_level)}</td><td>${esc(c.semester)}</td>
       <td><button type="button" data-edit-curriculum="${c.id}">Edit</button> <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
   }).join('');
@@ -422,7 +422,7 @@ $('course-body').addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-remove-course]');
   if (!btn) return;
   const course = lookups.subjects.find((row) => String(row.id) === btn.dataset.removeCourse);
-  if (!course || !confirm(`Remove ${course.subject_code} ${course.subject_name}? This cannot be undone.`)) return;
+  if (!course || !confirm(`Remove ${course.subject_code} — ${course.subject_name}? This cannot be undone.`)) return;
   const { data, error } = await sb.from('subjects').delete().eq('id', Number(course.id)).select('id');
   if (error) {
     const message = error.code === '23503'
@@ -568,7 +568,7 @@ $('curriculum-course-search').addEventListener('input', (e) => {
   const selected = select.value;
   fillSelect('curriculum-subject', lookups.subjects.filter((s) =>
     `${s.subject_code} ${s.subject_name}`.toLocaleLowerCase().includes(query)),
-  (s) => `${s.subject_code} ${s.subject_name}`, 'Select a course');
+  (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course');
   if ([...select.options].some((option) => option.value === selected)) select.value = selected;
 });
 $('curriculum-cancel').addEventListener('click', () => {
