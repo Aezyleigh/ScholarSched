@@ -66,7 +66,7 @@ Closing the active period means students and teachers will not see schedules unt
 5. **Step 3, courses in this curriculum:** choose **Edit** on a row to change that course's code, name, or units right in the list, **Remove** to take it out of this curriculum only, or **Delete** to remove the course everywhere. Edits apply to the course in every curriculum that uses it.
 6. In **Faculty**, add or edit the teacher name, optional email, and maximum weekly load. Remove a teacher only after reassigning their schedules.
 
-The schedule form only offers courses assigned to the selected program and year level for the active semester. Year levels and teacher availability windows are currently managed by the system administrator in Supabase.
+The schedule form offers courses assigned to the selected program and year level for the active semester, plus any course already meeting with the chosen teacher, room, day and time (the other half of a combined class). Year levels and teacher availability windows are currently managed by the system administrator in Supabase.
 
 ## For Program Heads: create and manage schedules
 
@@ -76,7 +76,7 @@ The schedule form only offers courses assigned to the selected program and year 
 4. Choose a **Start time**. Classes start no earlier than 8:00 AM and last exactly 2 hours 30 minutes; the end time is filled in automatically.
 5. Choose **Check conflicts and save as draft**. New schedules are saved as drafts and are not shown to students or teachers.
 6. If the system reports a conflict, read the message. When suggestions are available, choose a suggested room or start time and submit again.
-7. To combine two courses into one class, use the same teacher, room, day and start time for both, in the same semester. The form shows a **Combined class** note when that meeting already exists, and the schedule table then shows the courses together under one time slot.
+7. To combine two courses into one class, use the same teacher, room, day and start time for both, in the same semester. The two courses may belong to different programs; the form shows a **Combined class** note when that meeting already exists, and the schedule table then shows the courses together under one time slot.
 8. Find the schedule in the table. Use **Edit** to change it. Use **Publish** when it is ready for students and teachers. Published schedules can be **Unpublished** if they need more changes.
 9. To delete a draft, choose **Delete** and confirm. Published schedules must be unpublished before they can be deleted.
 

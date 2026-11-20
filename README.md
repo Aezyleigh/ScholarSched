@@ -92,12 +92,13 @@ ScholarSched/
     ├── migration_v7.sql Departments, room details, curriculum years, semester views, backup helper
     ├── migration_v8.sql Read-only teacher access and richer teacher schedule rows
     ├── migration_v9.sql Combined classes: one meeting shared by any courses
+    ├── migration_v10.sql 2025-2026 1st and 2nd Semester periods
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, v8, and v9 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, v8, v9, and v10 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
@@ -116,13 +117,19 @@ Combined courses are not reported as room, teacher or break conflicts, and the w
 the shared meeting once. Until it is run, the app still groups and labels combined classes, but a
 new combined save is validated by the older rules.
 
+Migration v10 creates the 2025-2026 1st and 2nd Semester periods and makes 1st Semester the active
+period, because that academic year is the school's available data. Only one semester can receive
+schedules at a time; both periods stay in **Rooms & Periods**, where the Program Head starts the
+other semester when it is time to schedule it. Any earlier period, such as 2026-2027, is kept with
+its schedules but is no longer active.
+
 ## Security notes
 
 - The anon key is public by design. Data is protected by **Row Level Security** policies in
   `supabase/schema.sql`. Do not loosen them without testing (see [TESTING.md](TESTING.md)).
 - Students read only the `student_schedule` view: published schedules only, with no drafts and no
   teacher emails. After migration v7 the view also exposes the semester and academic year, so the
-  student page can switch between 1st and 2nd Semester for the active academic year.
+  student page can switch between 1st and 2nd Semester of 2025-2026.
 - Teachers read only their own published schedules through the `teacher_schedule` view.
 - Only the Program Head can create, update, or delete schedules, and only drafts can be deleted.
 - Use real passwords for real accounts and delete the sample accounts before real use.
