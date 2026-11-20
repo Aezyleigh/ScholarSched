@@ -47,9 +47,11 @@ Do these steps before creating a new schedule.
 4. Check the periods list and identify the active period.
 5. Use **Edit** on the active period to enter its start and end dates. These dates are needed for calendar exports.
 
+ScholarSched uses the 1st and 2nd Semester of 2025-2026 only. The academic year is fixed for you.
+
 To start a new period:
 
-1. Enter a consecutive academic year, such as `2026-2027`, and choose the semester.
+1. Choose the semester, **1st Semester** or **2nd Semester**.
 2. Enter the start and end dates. The end date must be on or after the start date.
 3. Leave **Copy schedules from** as **Start empty**, or select an earlier period if you want to copy its schedules as drafts.
 4. Choose **Start period** and confirm if prompted. The new period becomes active and the previous period closes.
@@ -60,8 +62,8 @@ Closing the active period means students and teachers will not see schedules unt
 ### 3. Set up courses, programs, teachers, and curriculum
 
 1. Open **Curriculum**.
-2. Open **Setup: curriculum years and programs** when starting fresh. Add a curriculum year such as 2022-2027, and add the programs you offer. Each curriculum year keeps its own course list, so add the newest one first.
-3. **Step 1, choose a curriculum:** pick the curriculum year, program, year level, and semester. Steps 2 and 3 then show only that combination.
+2. Open **Manage programs** when starting fresh and add the programs you offer.
+3. **Step 1, choose a curriculum:** pick the program, year level, and semester. Steps 2 and 3 then show only that combination, and a program and year level are already selected when the page opens.
 4. **Step 2, add courses:** search the shared course list, tick the courses this curriculum needs, then choose **Add selected courses**. If a course does not exist yet, open **Create a new course** to add it and assign it in one step.
 5. **Step 3, courses in this curriculum:** choose **Edit** on a row to change that course's code, name, or units right in the list, **Remove** to take it out of this curriculum only, or **Delete** to remove the course everywhere. Edits apply to the course in every curriculum that uses it.
 6. In **Faculty**, add or edit the teacher name, optional email, and maximum weekly load. Remove a teacher only after reassigning their schedules.
@@ -99,6 +101,15 @@ A combined class is two or more courses meeting together with the same teacher, 
 
 Reports use schedules in the active period. Check the selected report and filters before downloading. Calendar export needs start and end dates on the active period.
 
+## For Program Heads: manage accounts
+
+1. Open **Settings**, then **User Management**.
+2. To add an account, enter the full name, email, password, and role. For a teacher, also choose the linked faculty record. Choose **Add Account**; the person can sign in with that email and password right away and appears in the list immediately.
+3. To change an account, choose **Edit** and update the name, role, linked teacher, or email address. The new email is the one they use the next time they sign in. Leave the password field blank when editing.
+4. Choose **Remove** to take away an account's access. The login itself remains in Supabase but has no role, so it cannot reach the app.
+
+If the page says email editing needs migration v11, ask the administrator to run `supabase/migration_v11.sql` once, then reload the page.
+
 ## Helpful tips
 
 - **No courses in the schedule form:** Check that the active period has the right semester, then assign courses to that program, year level, and semester in **Curriculum**.
@@ -106,4 +117,4 @@ Reports use schedules in the active period. Check the selected report and filter
 - **A save is rejected:** Check the displayed reason. Confirm the teacher is available, the room is free, and the class does not break the 30-minute gap, 2.5-hour duration, or weekly load rules. A class may span an entire configured break, but cannot overlap only part of one.
 - **Calendar download asks for dates:** A Program Head needs to edit the active period and enter both dates.
 - **A record cannot be removed:** It is still referenced by a schedule or curriculum entry. Reassign or remove the dependent entry first.
-- **Login does not work:** Check the email and password with the Program Head. Staff accounts and roles must be set up before sign-in.
+- **Login does not work:** Check the email and password with the Program Head. Staff accounts and roles must be set up before sign-in, and a changed email must match the one shown under User Management.

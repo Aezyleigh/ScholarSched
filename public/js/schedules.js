@@ -18,15 +18,19 @@ let editingPairId = null;
 let currentSemester = null;
 let curriculumLoadError = null;
 let periodLoadError = null;
-let currentCurriculumYear = null;
 let currentUsers = [];
 let cyLimit = 12;           // courses shown in the Add Courses picker before "View more"
 let editingSubjectId = null; // course being edited inline in the curriculum list
-const SCHOOL_YEAR_LABEL = '2025-2026';   // fallback until the active period loads
+const SCHOOL_YEAR_LABEL = '2025-2026';   // the only academic year the school schedules
 let activeYear = null;                    // academic year of the active period, used for data
+let curriculumDefaultsSet = false;
+
+/* ScholarSched covers the 1st and 2nd Semester of 2025-2026 only, so every
+   semester picker and period list is limited to that academic year. */
+const yearPeriods = () => (lookups.periods || []).filter((p) => p.academic_year === SCHOOL_YEAR_LABEL);
 
 /* Optional v7 tables and columns. Detected once so the app still runs on an older database. */
-const caps = { departments: false, roomMeta: false, curriculumYears: false, semesterViews: false, identities: false };
+const caps = { departments: false, roomMeta: false, semesterViews: false, userEmails: false };
 const inviteClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'scholarsched-new-account' },
 });
@@ -348,8 +352,7 @@ function updateSemesterNote() {
     note.textContent = `Schedules are saved to the active ${label} period (${currentPeriod.academic_year}).`;
     return;
   }
-  const target = lookups.periods.find((p) => p.semester === semester && p.academic_year === currentPeriod.academic_year)
-    || lookups.periods.find((p) => p.semester === semester);
+  const target = yearPeriods().find((p) => p.semester === semester);
   note.innerHTML = `Only the active period can receive schedules. You chose ${esc(label)}, but ${esc(currentSemester)} Semester is active.` +
     (target
       ? ` <button type="button" data-activate-semester="${esc(target.id)}">Switch to ${esc(label)}</button>`
@@ -416,8 +419,8 @@ function fillSelect(id, rows, labelFn, placeholder = '') {
 async function loadLookups() {
   const teacherCols = `id, teacher_name, email, max_load_hours${caps.departments ? ', department_id' : ''}`;
   const roomCols = `id, room_name, is_online${caps.roomMeta ? ', capacity, room_type' : ''}`;
-  const curriculumCols = `id, subject_id, program_id, year_level_id, semester${caps.curriculumYears ? ', valid_years' : ''}`;
-  const [subjects, programs, years, teachers, rooms, availability, curriculum, periods, departments, curriculumYears] = await Promise.all([
+  const curriculumCols = 'id, subject_id, program_id, year_level_id, semester';
+  const [subjects, programs, years, teachers, rooms, availability, curriculum, periods, departments] = await Promise.all([
     sb.from('subjects').select('id, subject_code, subject_name, units').order('subject_code'),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
@@ -427,7 +430,6 @@ async function loadLookups() {
     sb.from('curriculum_courses').select(curriculumCols).order('semester'),
     sb.from('scheduling_periods').select('id, academic_year, semester, starts_on, ends_on, is_active').order('academic_year', { ascending: false }),
     caps.departments ? sb.from('departments').select('id, department_name').order('department_name') : Promise.resolve({ data: [] }),
-    caps.curriculumYears ? sb.from('curriculum_years').select('valid_years').order('valid_years', { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
   curriculumLoadError = curriculum.error;
   if (curriculum.error) console.error('Curriculum lookup failed:', curriculum.error);
@@ -435,7 +437,7 @@ async function loadLookups() {
     subjects: subjects.data || [], programs: programs.data || [], years: years.data || [],
     teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
     curriculum: curriculum.data || [], periods: periods.data || [],
-    departments: departments.data || [], curriculumYears: (curriculumYears.data || []).map((r) => r.valid_years),
+    departments: departments.data || [],
   };
   const previousFilters = { program: $('cy-program').value, level: $('cy-level').value, semester: $('cy-semester').value };
   fillSelect('f-program', lookups.programs, (r) => r.program_name);
@@ -447,6 +449,13 @@ async function loadLookups() {
   if (previousFilters.program && lookups.programs.some((p) => String(p.id) === previousFilters.program)) $('cy-program').value = previousFilters.program;
   if (previousFilters.level && lookups.years.some((y) => String(y.id) === previousFilters.level)) $('cy-level').value = previousFilters.level;
   if (previousFilters.semester) $('cy-semester').value = previousFilters.semester;
+  if (!curriculumDefaultsSet) {
+    // Land on a real course list instead of three empty pickers.
+    if (lookups.programs.length) $('cy-program').selectedIndex = 0;
+    if (lookups.years.length) $('cy-level').value = String(lookups.years[0].id);
+    if (!$('cy-semester').value) $('cy-semester').value = '1st';
+    curriculumDefaultsSet = true;
+  }
   fillSelect('teacher-dept', lookups.departments, (r) => r.department_name, 'No department');
   fillSelect('user-teacher', lookups.teachers, (r) => r.teacher_name, 'Not linked');
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
@@ -463,16 +472,16 @@ async function loadLookups() {
 /* One probe per optional feature, so a database without migration v7 still works. */
 async function detectCaps() {
   const ok = (query) => query.then(({ error }) => !error).catch(() => false);
-  const [departments, roomMeta, curriculumYears, semesterViews] = await Promise.all([
+  const [departments, roomMeta, semesterViews, userEmails] = await Promise.all([
     ok(sb.from('departments').select('id').limit(1)),
     ok(sb.from('rooms').select('id, capacity, room_type').limit(1)),
-    ok(sb.from('curriculum_years').select('valid_years').limit(1)),
     ok(sb.from('student_schedule').select('id, semester').limit(1)),
+    ok(sb.from('profiles').select('email').limit(1)),
   ]);
   caps.departments = departments;
   caps.roomMeta = roomMeta;
-  caps.curriculumYears = curriculumYears;
   caps.semesterViews = semesterViews;
+  caps.userEmails = userEmails;
 }
 
 function showSetupAlert(id, type, message) {
@@ -498,13 +507,13 @@ function renderSetup() {
   $('room-type').disabled = !caps.roomMeta;
   $('room-capacity').disabled = !caps.roomMeta;
   $('room-meta-note').hidden = caps.roomMeta;
-  $('period-body').innerHTML = lookups.periods.map((p) => `
+  $('period-body').innerHTML = yearPeriods().map((p) => `
     <tr><td>${esc(p.academic_year)}</td><td>${esc(p.semester)}</td>
     <td>${esc(p.starts_on || 'Dates not set')} – ${esc(p.ends_on || '')}</td><td>${p.is_active ? 'Active' : 'Closed'}</td><td>${admin ? `
     <button type="button" data-edit-period="${p.id}">Edit</button>
     ${p.is_active ? '<button type="button" data-close-period>Close</button>' : `<button type="button" data-activate-period="${p.id}">Start</button>`}
     <button type="button" class="danger" data-remove-period="${p.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
-  $('period-copy').innerHTML = '<option value="">Start empty</option>' + lookups.periods
+  $('period-copy').innerHTML = '<option value="">Start empty</option>' + yearPeriods()
     .map((p) => `<option value="${p.id}">${esc(p.academic_year)} ${esc(p.semester)}</option>`).join('');
 }
 
@@ -611,8 +620,8 @@ $('period-cancel').addEventListener('click', () => {
 $('period-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const year = $('period-year').value.trim();
-  if (!/^\d{4}-\d{4}$/.test(year) || Number(year.slice(5)) !== Number(year.slice(0, 4)) + 1)
-    return showSetupAlert('period-alert', 'error', 'Academic year must be consecutive, for example 2026-2027.');
+  if (year !== SCHOOL_YEAR_LABEL)
+    return showSetupAlert('period-alert', 'error', `Only the ${SCHOOL_YEAR_LABEL} academic year is used.`);
   if ($('period-start').value > $('period-end').value)
     return showSetupAlert('period-alert', 'error', 'The end date must be on or after the start date.');
   if (editingPeriodId) {
@@ -648,22 +657,12 @@ function showCurriculumAlert(id, type, message) {
   if (window.toast) window.toast(cleanAlertText(message), type);
 }
 
-/* Curriculum versions such as 2022-2027. Without migration v7 the app uses a
-   single unlabeled curriculum and hides the version controls. */
-function curriculumVersionList() {
-  if (!caps.curriculumYears) return [];
-  const saved = lookups.curriculumYears || [];
-  const used = lookups.curriculum.map((c) => c.valid_years).filter(Boolean);
-  return [...new Set([...saved, ...used])].sort((a, b) => b.localeCompare(a));
-}
-
+/* The course list for a program, year level and semester. A course appears once. */
 function curriculumRows(programId, levelId, semester) {
-  const version = caps.curriculumYears ? currentCurriculumYear : '';
   return (lookups.curriculum || []).filter((c) =>
     (!programId || String(c.program_id) === String(programId))
     && (!levelId || String(c.year_level_id) === String(levelId))
-    && (!semester || c.semester === semester)
-    && (!version || (c.valid_years || '') === version));
+    && (!semester || c.semester === semester));
 }
 
 function renderCurriculum() {
@@ -678,31 +677,18 @@ function renderCurriculum() {
     <tr><td>${esc(p.program_name)}</td><td>${admin ? `<button type="button" data-edit-program="${p.id}">Edit</button>
     <button type="button" class="danger" data-remove-program="${p.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
 
-  const versions = curriculumVersionList();
-  if (currentCurriculumYear === null) currentCurriculumYear = versions[0] || '';
-  const yearLabel = $('cy-year').closest('label');
-  const yearsPanel = $('cy-years-panel');
-  yearLabel.hidden = !caps.curriculumYears;
-  if (yearsPanel) yearsPanel.hidden = !caps.curriculumYears;
-  if (caps.curriculumYears) {
-    $('cy-year').innerHTML = '<option value="">All Curriculum Years</option>' +
-      versions.map((v) => `<option value="${escAttr(v)}">${esc(v)} Curriculum</option>`).join('');
-    $('cy-year').value = currentCurriculumYear;
-    // With no version yet, setup is the only place to start, so open it for them.
-    if (!versions.length) $('cy-setup').open = true;
-  }
-  $('cy-year-body').innerHTML = versions.map((v) => {
-    const count = lookups.curriculum.filter((c) => c.valid_years === v).length;
-    return `<tr><td>${esc(v)}</td><td>${count}</td><td>
-      <button type="button" data-open-year="${esc(v)}" ${v === currentCurriculumYear ? 'disabled' : ''}>View</button>
-      ${admin ? `<button type="button" class="danger" data-remove-year="${esc(v)}">Remove</button>` : ''}</td></tr>`;
-  }).join('') || '<tr><td colspan="3" class="muted">No curriculum years yet. Add one above, for example 2022-2027.</td></tr>';
-
   const programId = $('cy-program').value;
   const levelId = $('cy-level').value;
   const semester = $('cy-semester').value;
+  const seenCourses = new Set();
   const rows = curriculumRows(programId, levelId, semester)
     .filter((c) => subjectById.has(String(c.subject_id)))
+    .filter((c) => {
+      const key = String(c.subject_id);
+      if (seenCourses.has(key)) return false;   // older databases may repeat a course per curriculum year
+      seenCourses.add(key);
+      return true;
+    })
     .sort((a, b) => {
       const left = subjectById.get(String(a.subject_id)).subject_code;
       const right = subjectById.get(String(b.subject_id)).subject_code;
@@ -716,19 +702,17 @@ function renderCurriculum() {
   const colVisible = {
     level: !levelId,
     semester: !semester,
-    year: caps.curriculumYears && !currentCurriculumYear,
   };
   document.querySelectorAll('#cy-table thead [data-col]').forEach((th) => {
     th.hidden = !colVisible[th.dataset.col];
   });
-  const columnCount = 3 + ['level', 'semester', 'year'].filter((key) => colVisible[key]).length;
+  const columnCount = 3 + ['level', 'semester'].filter((key) => colVisible[key]).length;
 
   $('cy-body').innerHTML = rows.map((c) => {
     const subject = subjectById.get(String(c.subject_id));
     const level = yearById.get(String(c.year_level_id));
     const levelCell = colVisible.level ? `<td>${esc(level ? level.year_level : 'All Year Levels')}</td>` : '';
     const semesterCell = colVisible.semester ? `<td>${esc(c.semester)}</td>` : '';
-    const yearCell = colVisible.year ? `<td>${esc(c.valid_years || '—')}</td>` : '';
     if (admin && String(subject.id) === String(editingSubjectId)) {
       return `<tr class="is-editing" data-edit-row="${subject.id}">
         <td colspan="${columnCount}"><div class="cy-edit-form">
@@ -745,7 +729,7 @@ function renderCurriculum() {
           <span class="cy-edit-note">Changes apply to this course everywhere it is used. Delete removes it from every curriculum.</span></td></tr>`;
     }
     return `<tr><td>${esc(subject.subject_code)} — ${esc(subject.subject_name)}</td>
-      <td>${esc(subject.units)}</td>${levelCell}${semesterCell}${yearCell}
+      <td>${esc(subject.units)}</td>${levelCell}${semesterCell}
       <td>${admin ? `<button type="button" data-edit-subject="${subject.id}">Edit</button>
       <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`;
   }).join('') || `<tr><td colspan="${columnCount}" class="muted">${ready
@@ -754,19 +738,16 @@ function renderCurriculum() {
 
   const programName = programById.get(String(programId))?.program_name || 'All programs';
   const levelName = yearById.get(String(levelId))?.year_level || 'All year levels';
-  const versionName = caps.curriculumYears ? (currentCurriculumYear ? `${currentCurriculumYear} Curriculum` : 'All curriculum years') : 'Curriculum';
   $('cy-summary').textContent = ready
-    ? `${rows.length} ${rows.length === 1 ? 'course' : 'courses'} in ${versionName} for ${programName}, ${levelName}, ${semester} Semester.`
+    ? `${rows.length} ${rows.length === 1 ? 'course' : 'courses'} for ${programName}, ${levelName}, ${semester} Semester.`
     : 'Choose a program, year level and semester to add or edit courses.';
 
-  const canAdd = ready && (!caps.curriculumYears || Boolean(currentCurriculumYear));
+  const canAdd = ready;
   $('cy-add').textContent = 'Add Selected Courses';
   if (!canAdd) {
     $('cy-count').textContent = '';
     $('cy-more').hidden = true;
-    $('cy-course-list').innerHTML = `<p class="muted">${!ready
-      ? 'Choose a program, year level and semester in step 1 first.'
-      : 'Choose a specific curriculum year to add courses.'}</p>`;
+    $('cy-course-list').innerHTML = '<p class="muted">Choose a program, year level and semester in step 1 first.</p>';
     return;
   }
 
@@ -1049,26 +1030,16 @@ $('cy-course-list').addEventListener('change', () => {
   const chosen = document.querySelectorAll('[data-cy-course]:checked:not(:disabled)').length;
   $('cy-add').textContent = chosen ? `Add ${chosen} ${chosen === 1 ? 'course' : 'courses'}` : 'Add Selected Courses';
 });
-$('cy-year').addEventListener('change', () => {
-  currentCurriculumYear = $('cy-year').value;
-  renderCurriculum();
-});
-
 $('cy-add').addEventListener('click', async (e) => {
   const { programId, levelId, semester } = curriculumSelection();
   if (!programId || !levelId || !semester) {
     return showCurriculumAlert('cy-alert', 'error', 'Choose a program, year level and semester before adding courses.');
   }
-  if (caps.curriculumYears && !currentCurriculumYear) {
-    return showCurriculumAlert('cy-alert', 'error', 'Choose a specific curriculum year before adding courses.');
-  }
   const chosen = [...document.querySelectorAll('[data-cy-course]:checked:not(:disabled)')].map((box) => Number(box.value));
   if (!chosen.length) return showCurriculumAlert('cy-alert', 'error', 'Tick at least one course to add.');
-  const values = chosen.map((subjectId) => {
-    const row = { subject_id: subjectId, program_id: Number(programId), year_level_id: Number(levelId), semester };
-    if (caps.curriculumYears) row.valid_years = currentCurriculumYear;
-    return row;
-  });
+  const values = chosen.map((subjectId) => ({
+    subject_id: subjectId, program_id: Number(programId), year_level_id: Number(levelId), semester,
+  }));
   const btn = e.currentTarget;
   btn.disabled = true;
   btn.classList.add('is-busy');
@@ -1086,9 +1057,6 @@ $('cy-quick-form').addEventListener('submit', async (e) => {
   if (!programId || !levelId || !semester) {
     return showCurriculumAlert('cy-alert', 'error', 'Choose a program, year level and semester first.');
   }
-  if (caps.curriculumYears && !currentCurriculumYear) {
-    return showCurriculumAlert('cy-alert', 'error', 'Choose a specific curriculum year first.');
-  }
   const subject = {
     subject_code: $('cy-code').value.trim().toUpperCase(),
     subject_name: $('cy-name').value.trim(),
@@ -1101,7 +1069,6 @@ $('cy-quick-form').addEventListener('submit', async (e) => {
       : 'Could not create the course. Check the code, name and units.');
   }
   const row = { subject_id: data.id, program_id: Number(programId), year_level_id: Number(levelId), semester };
-  if (caps.curriculumYears) row.valid_years = currentCurriculumYear;
   const added = await sb.from('curriculum_courses').insert(row);
   if (added.error) {
     return showCurriculumAlert('cy-alert', 'error', 'The course was created but could not be added to this curriculum.');
@@ -1109,48 +1076,6 @@ $('cy-quick-form').addEventListener('submit', async (e) => {
   $('cy-quick-form').reset();
   $('cy-quick-form').closest('details').open = false;
   showCurriculumAlert('cy-alert', 'ok', `${subject.subject_code} was created and added to the curriculum.`);
-  await loadLookups();
-});
-
-$('cy-year-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const value = $('cy-year-input').value.trim();
-  if (!caps.curriculumYears) {
-    return showCurriculumAlert('cy-year-alert', 'error', 'Run supabase/migration_v7.sql to enable curriculum years.');
-  }
-  const { error } = await sb.from('curriculum_years').insert({ valid_years: value });
-  if (error) {
-    return showCurriculumAlert('cy-year-alert', 'error', error.code === '23505'
-      ? 'That curriculum year already exists.'
-      : 'Could not add the curriculum year.');
-  }
-  currentCurriculumYear = value;
-  $('cy-year-form').reset();
-  showCurriculumAlert('cy-year-alert', 'ok', `${value} Curriculum added. Tick its courses below.`);
-  await loadLookups();
-});
-
-$('cy-year-body').addEventListener('click', async (e) => {
-  const open = e.target.closest('[data-open-year]');
-  if (open) {
-    currentCurriculumYear = open.dataset.openYear;
-    $('cy-year').value = currentCurriculumYear;
-    renderCurriculum();
-    $('cy-body').closest('section')?.scrollIntoView({ behavior: 'smooth' });
-    return;
-  }
-  const remove = e.target.closest('[data-remove-year]');
-  if (!remove || !caps.curriculumYears) return;
-  const value = remove.dataset.removeYear;
-  if (!confirm(`Remove the ${value} curriculum year? Its courses must be removed first.`)) return;
-  const { error } = await sb.from('curriculum_years').delete().eq('valid_years', value);
-  if (error) {
-    return showCurriculumAlert('cy-year-alert', 'error', error.code === '23503'
-      ? `The ${value} curriculum year still has courses. Remove those courses first.`
-      : 'Could not remove the curriculum year.');
-  }
-  if (currentCurriculumYear === value) currentCurriculumYear = null;
-  showCurriculumAlert('cy-year-alert', 'ok', `${value} curriculum year removed.`);
   await loadLookups();
 });
 
@@ -2072,9 +1997,10 @@ function downloadTimetablePdf(rows, title) {
 
 async function loadUsers() {
   if (!$('user-body') || !currentUser || currentUser.role !== 'admin') return;
-  const { data, error } = await sb.from('profiles').select('user_id, name, role, teacher_id').order('name');
+  const columns = `user_id, name, role, teacher_id${caps.userEmails ? ', email' : ''}`;
+  const { data, error } = await sb.from('profiles').select(columns).order('name');
   if (error) {
-    $('user-body').innerHTML = '<tr><td colspan="4" class="muted">Could not load the accounts.</td></tr>';
+    $('user-body').innerHTML = '<tr><td colspan="5" class="muted">Could not load the accounts.</td></tr>';
     return;
   }
   currentUsers = data || [];
@@ -2084,13 +2010,15 @@ async function loadUsers() {
 function renderUsers() {
   if (!$('user-body')) return;
   const teacherById = new Map(lookups.teachers.map((t) => [String(t.id), t.teacher_name]));
+  $('user-email-note').hidden = caps.userEmails;
   $('user-body').innerHTML = currentUsers.map((u) => `
     <tr><td>${esc(u.name)}${u.user_id === currentUser.id ? ' <span class="badge PUBLISHED">You</span>' : ''}</td>
+      <td>${esc(u.email || '—')}</td>
       <td>${esc(roleLabel(u.role))}</td>
       <td>${esc(teacherById.get(String(u.teacher_id)) || '—')}</td>
       <td><button type="button" data-edit-user="${esc(u.user_id)}">Edit</button>
       <button type="button" class="danger" data-remove-user="${esc(u.user_id)}" ${u.user_id === currentUser.id ? 'disabled title="You cannot remove your own account"' : ''}>Remove</button></td></tr>`).join('')
-    || '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+    || '<tr><td colspan="5" class="muted">No accounts yet.</td></tr>';
 }
 
 function userTeacherField() {
@@ -2107,9 +2035,9 @@ $('user-body').addEventListener('click', async (e) => {
     if (!user) return;
     $('user-id').value = user.user_id;
     $('user-name').value = user.name;
-    $('user-email').value = '';
+    $('user-email').value = user.email || '';
     $('user-password').value = '';
-    $('user-email').disabled = true;
+    $('user-email').disabled = !caps.userEmails;
     $('user-password').disabled = true;
     $('user-role').value = user.role;
     $('user-teacher').value = user.teacher_id ?? '';
@@ -2153,17 +2081,44 @@ $('user-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.classList.add('is-busy');
   try {
+    const email = $('user-email').value.trim().toLowerCase();
     if (id) {
+      if (caps.userEmails) {
+        const { data, error } = await sb.rpc('admin_update_staff_email', { p_user_id: id, p_email: email });
+        if (error || !data?.ok) {
+          return showCurriculumAlert('user-alert', 'error', error?.message || data?.error || 'Could not update the email address.');
+        }
+        values.email = email;
+      }
       const { error } = await sb.from('profiles').update(values).eq('user_id', id);
       if (error) return showCurriculumAlert('user-alert', 'error', 'Could not save the account.');
       $('user-cancel').click();
-      showCurriculumAlert('user-alert', 'ok', 'Account updated.');
+      showCurriculumAlert('user-alert', 'ok', 'Account updated.' + (caps.userEmails ? ' They can sign in with the new email address.' : ''));
       await loadUsers();
       return;
     }
-    const email = $('user-email').value.trim();
     const password = $('user-password').value;
     if (password.length < 6) return showCurriculumAlert('user-alert', 'error', 'Use a password with at least 6 characters.');
+
+    // The SQL helper creates an already-confirmed login, so a new account can sign
+    // in straight away even when Supabase email confirmations are switched on.
+    if (caps.userEmails) {
+      const { data, error } = await sb.rpc('admin_create_staff', {
+        p_name: values.name, p_email: email, p_password: password,
+        p_role: role, p_teacher_id: values.teacher_id,
+      });
+      if (error) {
+        return showCurriculumAlert('user-alert', 'error', /does not exist|schema cache/i.test(error.message)
+          ? 'Run supabase/migration_v11.sql to create accounts from here, then reload.'
+          : `The account was not created. ${error.message}`);
+      }
+      if (!data?.ok) return showCurriculumAlert('user-alert', 'error', data?.error || 'The account was not created.');
+      $('user-cancel').click();
+      showCurriculumAlert('user-alert', 'ok', `Account created for ${values.name}. They can sign in now with ${email} and that password.`);
+      await loadUsers();
+      return;
+    }
+
     const { data, error } = await inviteClient.auth.signUp({ email, password, options: { data: { name: values.name } } });
     if (error) {
       return showCurriculumAlert('user-alert', 'error', /already|registered|exists/i.test(error.message)
@@ -2197,7 +2152,6 @@ const BACKUP_TABLES = [
   { name: 'teachers' },
   { name: 'teacher_availability', conflict: 'teacher_id,day' },
   { name: 'rooms' },
-  { name: 'curriculum_years', optional: 'curriculumYears', conflict: 'valid_years' },
   { name: 'curriculum_courses' },
   { name: 'scheduling_periods' },
   { name: 'schedules' },
@@ -2257,6 +2211,13 @@ $('backup-restore').addEventListener('click', async (e) => {
       const rows = payload.tables[entry.name];
       if (!Array.isArray(rows) || !rows.length) continue;
       let body = rows;
+      if (entry.name === 'curriculum_courses') {
+        // Backups written before v11 carried a curriculum year that no longer exists.
+        body = body.map(({ valid_years, ...rest }) => rest);
+      }
+      if (entry.name === 'profiles' && !caps.userEmails) {
+        body = body.map(({ email, ...rest }) => rest);
+      }
       if (entry.name === 'schedules') {
         body = rows.filter((row) => currentPeriod && String(row.period_id) === String(currentPeriod.id));
         if (body.length < rows.length) report.push(`schedules: ${rows.length - body.length} rows from other periods skipped`);
@@ -2358,12 +2319,12 @@ async function showStudent() {
 
   currentPeriod = period.data || null;
   activeYear = period.data?.academic_year || null;
-  $('student-period').textContent = activeYear || SCHOOL_YEAR_LABEL;
+  $('student-period').textContent = SCHOOL_YEAR_LABEL;
 
   // Offer every semester saved for this academic year, so a visitor can compare
   // 1st and 2nd Semester without waiting for that semester to become active.
   const yearSemesters = [...new Set((periods.data || [])
-    .filter((p) => p.academic_year === activeYear)
+    .filter((p) => p.academic_year === SCHOOL_YEAR_LABEL)
     .map((p) => p.semester))].sort();
   const semesters = yearSemesters.length ? yearSemesters : ['1st', '2nd'];
   $('s-semester').innerHTML = semesters
@@ -2412,7 +2373,7 @@ async function loadStudentSchedule() {
     localStorage.setItem('scholarsched_student', JSON.stringify({ program, year, semester }));
   } catch (_) { /* storage unavailable */ }
 
-  $('student-period').textContent = [activeYear || SCHOOL_YEAR_LABEL, semester && `${semester} Semester`]
+  $('student-period').textContent = [SCHOOL_YEAR_LABEL, semester && `${semester} Semester`]
     .filter(Boolean).join(' · ');
 
   // On a database without migration v7 the public view only returns the active
@@ -2426,7 +2387,7 @@ async function loadStudentSchedule() {
 
   let query = sb.from('student_schedule').select('*');
   if (caps.semesterViews) {
-    query = query.eq('academic_year', activeYear || SCHOOL_YEAR_LABEL);
+    query = query.eq('academic_year', SCHOOL_YEAR_LABEL);
     if (semester) query = query.eq('semester', semester);
   }
   if (term.length >= 2) {
@@ -2482,7 +2443,7 @@ $('staff-weekly-toggle').addEventListener('click', () => { staffView = 'week'; $
 $('s-export-csv').addEventListener('click', () => downloadScheduleCsv(studentRows, 'student-schedule'));
 $('s-export-ics').addEventListener('click', () => downloadScheduleIcs(studentRows, 'student-schedule', 'student-export-alert'));
 $('s-export-pdf').addEventListener('click', () => downloadSchedulePdf(studentRows, 'Student schedule'));
-$('s-export-timetable').addEventListener('click', () => downloadTimetablePdf(studentRows, `Weekly timetable: ${$('s-semester').value} Semester ${activeYear || SCHOOL_YEAR_LABEL}`));
+$('s-export-timetable').addEventListener('click', () => downloadTimetablePdf(studentRows, `Weekly timetable: ${$('s-semester').value} Semester ${SCHOOL_YEAR_LABEL}`));
 $('staff-export-csv').addEventListener('click', () => downloadScheduleCsv(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule'));
 $('staff-export-ics').addEventListener('click', () => downloadScheduleIcs(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule', 'staff-export-alert'));
 $('staff-export-pdf').addEventListener('click', () => downloadSchedulePdf(staffRows, currentUser?.role === 'admin' ? 'Active period schedules' : 'Teacher schedule'));
