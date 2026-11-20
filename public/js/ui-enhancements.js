@@ -40,49 +40,14 @@ function combo(sel){
  sel._sync=sync;sync()}
 const initCombos=()=>$$('select').forEach(combo);
 
-/* 2. day chips (value stays "Monday" or "Monday|Wednesday|..." for schedules.js) */
-function days(){
- const sel=$('#f-day');if(!sel)return;const box=$('#day-chips'),err=$('#day-error');
- const D=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];sel.required=false;
- D.forEach(d=>{const l=document.createElement('label');l.className='chip';l.title=d;l.innerHTML=`<input type="checkbox" value="${d}"><span>${d.slice(0,3)}</span>`;box.append(l)});
- const boxes=$$('input',box);
- const push=()=>{const v=D.filter(d=>boxes.find(b=>b.value===d).checked).join('|');
-  if(v&&![...sel.options].some(o=>o.value===v))sel.add(new Option(v.split('|').join(' / '),v));
-  selD.set.call(sel,v);if(!v)sel.selectedIndex=-1;err.textContent='';fire(sel,'change')};
- [['Mon / Wed',['Monday','Wednesday']],['Tue / Thu',['Tuesday','Thursday']],['Clear',[]]].forEach(([t,v])=>{const b=document.createElement('button');b.type='button';b.className='chip-btn';b.textContent=t;b.onclick=()=>{boxes.forEach(x=>x.checked=v.includes(x.value));push()};box.append(b)});
- sel._sync=()=>{const v=selD.get.call(sel).split('|');boxes.forEach(b=>b.checked=v.includes(b.value))};sel._sync();
- box.addEventListener('change',push);
- sel.form.addEventListener('reset',()=>setTimeout(sel._sync));
- sel.form.addEventListener('submit',e=>{if(!selD.get.call(sel)){e.preventDefault();e.stopImmediatePropagation();err.textContent='Choose at least one day.';boxes[0].focus()}},true)}
-
-/* 3. time picker */
-function time(){
- const st=$('#f-start');if(!st)return;
- const f=m=>{const h=Math.floor(m/60)%24;return`${h%12||12}:${String(m%60).padStart(2,'0')} ${h<12?'AM':'PM'}`};
- const hm=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
- const mins=()=>{const v=st.value;return v?(([h,m])=>h*60+m)(v.split(':').map(Number)):null};
- const w=document.createElement('div');w.className='time-field';st.before(w);w.append(st);st.step=900;
- const mk=(t,l,fn,c)=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.setAttribute('aria-label',l);if(c)b.className=c;b.onclick=fn;return b};
- const set=m=>{m=Math.max(480,Math.min(m,1320));st.value=hm(m);fire(st,'input');fire(st,'change')};
- const pop=document.createElement('div');pop.className='time-pop';pop.hidden=true;
- [['Morning',480,720],['Afternoon',720,1080],['Evening',1080,1260]].forEach(([n,a,z])=>{const h=document.createElement('h4');h.textContent=n;const g=document.createElement('div');g.className='slots';
-  for(let m=a;m<z;m+=30){const b=mk(f(m),'Start at '+f(m),()=>{set(m);pop.hidden=true},'slot');b.dataset.m=m;g.append(b)}pop.append(h,g)});
- const tog=mk('Pick','Choose start time from list',()=>{pop.hidden=!pop.hidden;if(!pop.hidden)sync()},'step');
- w.append(mk('−30','Start 30 minutes earlier',()=>set((mins()??480)-30),'step'),mk('+30','Start 30 minutes later',()=>set((mins()??450)+30),'step'),tog,pop);
- const sum=document.createElement('p');sum.id='time-summary';sum.setAttribute('aria-live','polite');($('#duration-note')||w).after(sum);
- const sync=()=>{const m=mins();sum.textContent=m==null?'':`${f(m)} – ${f(m+150)} (2 h 30 min)`;$$('.slot',pop).forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.m===m)))};
- st._sync=sync;st.addEventListener('input',sync);st.form.addEventListener('reset',()=>setTimeout(sync));sync();
- document.addEventListener('click',e=>{if(!w.contains(e.target))pop.hidden=true});
- w.addEventListener('keydown',e=>{if(e.key==='Escape')pop.hidden=true})}
-
-/* 4. sub-tabs */
+/* 2. sub-tabs */
 function subtabs(){$$('[data-subtabs]').forEach(nav=>{
  const bs=$$('button',nav),show=b=>{bs.forEach(x=>{const on=x===b;x.setAttribute('aria-selected',on);x.tabIndex=on?0:-1;const p=$('#'+x.dataset.sub);p&&(p.hidden=!on)})};
  nav.addEventListener('click',e=>{const b=e.target.closest('button');b&&show(b)});
  nav.addEventListener('keydown',e=>{const i=bs.indexOf(document.activeElement),d={ArrowRight:1,ArrowLeft:-1}[e.key];if(i<0||!d)return;const n=bs[(i+d+bs.length)%bs.length];n.focus();show(n)});
  show(bs[0])})}
 
-/* 5. organized exports: read the table being shown, so CSV/PDF/print are clean and tabular */
+/* 3. organized exports: read the table being shown, so CSV/PDF/print are clean and tabular */
 const clean=t=>t.replace(/\s+/g,' ').trim();
 function parse(tb){
  const ths=$$('thead th',tb),keep=ths.map(h=>!h.classList.contains('admin-only')&&!$('input',h)&&clean(h.textContent)&&!/^actions?$/i.test(clean(h.textContent)));
@@ -104,8 +69,8 @@ const fname=(d,x)=>`scholarsched-${slug(d.title)}-${new Date().toISOString().sli
 function csv(d){const q=c=>`"${String(c).replace(/"/g,'""')}"`;
  save(new Blob(['\uFEFF'+d.blocks.map(b=>[...(d.blocks.length>1&&b.caption?[[b.caption]]:[]),b.head,...b.rows].map(r=>r.map(q).join(',')).join('\r\n')).join('\r\n\r\n')],{type:'text/csv;charset=utf-8'}),fname(d,'csv'))}
 function pdf(d){
- const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=36,pr=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
- const col=/^#[0-9a-f]{6}$/i.test(pr)?[1,3,5].map(i=>parseInt(pr.substr(i,2),16)):[29,78,137];let y=M;
+ const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=36,pr=getComputedStyle(document.documentElement).getPropertyValue('--green-900').trim();
+ const col=/^#[0-9a-f]{6}$/i.test(pr)?[1,3,5].map(i=>parseInt(pr.substr(i,2),16)):[7,61,39];let y=M;
  doc.setFont('helvetica','bold').setFontSize(15);doc.text('Unida Christian Colleges · ScholarSched',M,y);y+=18;
  doc.setFontSize(12);doc.text(d.title,M,y);y+=14;doc.setFont('helvetica','normal').setFontSize(9);
  doc.text([d.period,d.sub,'Generated '+d.date].filter(Boolean).join('   |   '),M,y);y+=16;
@@ -135,7 +100,18 @@ document.addEventListener('click',e=>{
  e.stopImmediatePropagation();e.preventDefault();F[m[1]](d)},true);
 document.addEventListener('click',e=>{$$('details.export-menu[open]').forEach(d=>d.contains(e.target)||d.removeAttribute('open'))});
 
-initCombos();days();time();subtabs();
+/* 4. toasts: a visual echo of the inline alerts, so results show wherever the user is.
+   The inline alerts keep role="alert", so this layer stays visual-only to avoid double announcements. */
+const toastRegion=document.createElement('div');
+toastRegion.className='toast-region';toastRegion.setAttribute('aria-hidden','true');
+document.body.append(toastRegion);
+window.toast=(message,type='ok')=>{
+ const text=String(message??'').replace(/\s+/g,' ').trim();if(!text)return;
+ const el=document.createElement('div');el.className='toast '+(type||'ok');el.textContent=text;
+ toastRegion.append(el);
+ setTimeout(()=>{el.classList.add('hide');setTimeout(()=>el.remove(),250)},4200)};
+
+initCombos();subtabs();
 new MutationObserver(initCombos).observe(document.body,{childList:true,subtree:true});
 document.addEventListener('reset',e=>setTimeout(()=>$$('select',e.target).forEach(s=>s._sync&&s._sync())),true);
 })();
