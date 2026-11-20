@@ -60,19 +60,27 @@ on conflict (valid_years) do nothing;
 -- ---------- Semester-aware public views ----------
 -- Students may switch between semesters, so the published view exposes both the
 -- semester and the academic year instead of only the active period.
-create or replace view public.student_schedule as
+-- A view cannot change its column list with create or replace, and the earlier
+-- v2 view already exposed program_name and year_level, so both views are dropped
+-- and recreated with one stable list of columns.
+drop view if exists public.student_schedule;
+create view public.student_schedule as
 select s.id, s.program_id, s.year_level_id, s.day, s.start_time, s.end_time,
        sub.subject_code, sub.subject_name, sub.units,
-       t.teacher_name, r.room_name,
-       p.semester, p.academic_year
+       t.teacher_name, r.room_name, pr.program_name, y.year_level,
+       p.semester, p.academic_year,
+       s.teacher_id, s.room_id
 from public.schedules s
 join public.scheduling_periods p on p.id = s.period_id
-join public.subjects sub on sub.id = s.subject_id
-join public.teachers t   on t.id = s.teacher_id
-join public.rooms r      on r.id = s.room_id
+join public.subjects sub  on sub.id = s.subject_id
+join public.teachers t    on t.id = s.teacher_id
+join public.rooms r       on r.id = s.room_id
+join public.programs pr   on pr.id = s.program_id
+join public.year_levels y on y.id = s.year_level_id
 where s.status = 'PUBLISHED';
 
-create or replace view public.teacher_schedule as
+drop view if exists public.teacher_schedule;
+create view public.teacher_schedule as
 select s.id, s.day, s.start_time, s.end_time, s.status,
        sub.subject_code, sub.subject_name, sub.units,
        pr.program_name, y.year_level, t.teacher_name, r.room_name,

@@ -104,8 +104,12 @@ edits them; calendar export requires a complete date range. PDF download uses th
 browser bundle from jsDelivr.
 
 Migration v7 adds faculty departments, room capacity and type, curriculum versions such as
-2022-2027, semester columns on the public schedule views, and a helper that resets id sequences after
-a restore. Until it is run, the app hides those controls and keeps working with the older tables.
+2022-2027, and a helper that resets id sequences after a restore. It also recreates both public
+schedule views with the semester and academic year while keeping the program and year level
+columns, so the student page can switch between 1st and 2nd Semester without signing in. Until it is
+run, the app hides those controls and keeps working with the older tables. If an earlier copy of v7
+stopped with `cannot drop columns from view`, run this copy: the views are dropped and recreated
+instead of replaced.
 
 Migration v8 lets teachers read courses, faculty, availability, rooms, departments and curriculum
 while keeping every write Program Head only. It also adds program, year, teacher and room ids to

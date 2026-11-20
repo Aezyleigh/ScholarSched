@@ -11,13 +11,13 @@ This guide explains how students, teachers, and Program Heads use ScholarSched. 
 ## For students: view your classes
 
 1. Open the ScholarSched website. The student schedule page opens automatically.
-2. Choose your **Program** and **Year level**. The schedule for the active period appears.
+2. Choose your **Program**, **Year level**, and **Semester**. The schedule for that semester appears, and the page header shows which semester is on screen.
 3. To find a particular course, type at least two letters or numbers in **Or search any subject**. Search works across the published schedule.
 4. Choose **List** to read the schedule as rows, or **Weekly timetable** to see classes by day and time.
 5. On a phone, swipe the timetable sideways to see the other days.
 6. To save a copy, choose **Download CSV**, **Download PDF**, or **Download calendar (.ics)**. Calendar downloads need the Program Head to set dates for the active period.
 
-Students see published classes only. Draft schedules are not visible to students.
+Students see published classes only. Draft schedules are not visible to students. Both 1st and 2nd Semester of 2025-2026 can be viewed: pick the other semester in the **Semester** list, no sign-in needed.
 
 ## For teachers: view your teaching schedule
 

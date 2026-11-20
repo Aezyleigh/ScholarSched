@@ -2349,18 +2349,26 @@ async function showStudent() {
   $('login-view').hidden = true;
   $('student-view').hidden = false;
 
-  const [period, programs, years] = await Promise.all([
+  const [period, programs, years, periods] = await Promise.all([
     sb.from('scheduling_periods').select('id, academic_year, semester, starts_on, ends_on').eq('is_active', true).maybeSingle(),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
+    sb.from('scheduling_periods').select('academic_year, semester').order('academic_year', { ascending: false }),
   ]);
 
   currentPeriod = period.data || null;
   activeYear = period.data?.academic_year || null;
   $('student-period').textContent = activeYear || SCHOOL_YEAR_LABEL;
 
-  // Semester switching needs the extra view columns added by migration v7.
-  $('s-semester').disabled = !caps.semesterViews;
+  // Offer every semester saved for this academic year, so a visitor can compare
+  // 1st and 2nd Semester without waiting for that semester to become active.
+  const yearSemesters = [...new Set((periods.data || [])
+    .filter((p) => p.academic_year === activeYear)
+    .map((p) => p.semester))].sort();
+  const semesters = yearSemesters.length ? yearSemesters : ['1st', '2nd'];
+  $('s-semester').innerHTML = semesters
+    .map((s) => `<option value="${esc(s)}">${esc(s)} Semester</option>`).join('');
+  $('s-semester').disabled = false;
 
   const withPlaceholder = (label, rows, labelKey) =>
     `<option value="">${label}</option>` +
@@ -2370,13 +2378,18 @@ async function showStudent() {
   $('s-year').innerHTML = withPlaceholder('Select year level', years.data, 'year_level');
 
   // Remember the last choice on this device (convenience only)
+  const activeSemester = period.data?.semester || semesters[0];
+  // Until the public view can filter by semester, always start on the active one.
+  const pickSemester = (value) => (!caps.semesterViews
+    ? activeSemester
+    : (semesters.includes(value) ? value : activeSemester));
   try {
     const saved = JSON.parse(localStorage.getItem('scholarsched_student') || '{}');
     if (saved.program) $('s-program').value = saved.program;
     if (saved.year) $('s-year').value = saved.year;
-    $('s-semester').value = saved.semester || period.data?.semester || '1st';
+    $('s-semester').value = pickSemester(saved.semester);
   } catch (_) {
-    $('s-semester').value = period.data?.semester || '1st';
+    $('s-semester').value = pickSemester(period.data?.semester);
   }
 
   loadStudentSchedule();
@@ -2398,6 +2411,18 @@ async function loadStudentSchedule() {
   try {
     localStorage.setItem('scholarsched_student', JSON.stringify({ program, year, semester }));
   } catch (_) { /* storage unavailable */ }
+
+  $('student-period').textContent = [activeYear || SCHOOL_YEAR_LABEL, semester && `${semester} Semester`]
+    .filter(Boolean).join(' · ');
+
+  // On a database without migration v7 the public view only returns the active
+  // period, so say so instead of showing that period's classes under the wrong label.
+  if (!caps.semesterViews && currentPeriod && semester && semester !== currentPeriod.semester) {
+    body.innerHTML = ''; studentRows = []; $('student-weekly-view').innerHTML = '';
+    empty.hidden = false;
+    empty.textContent = `${semester} Semester is not available in the public view yet. Only ${currentPeriod.semester} Semester can be shown until the Program Head applies the semester database update.`;
+    return;
+  }
 
   let query = sb.from('student_schedule').select('*');
   if (caps.semesterViews) {
