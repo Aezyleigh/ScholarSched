@@ -214,27 +214,11 @@
       <div id="tab-curriculum" role="tabpanel" aria-labelledby="app-tab-curriculum" hidden>
         <section>
           <h2>Curriculum</h2>
-          <p class="muted">A curriculum is the course list for one program, year level and semester. Work down the page: choose the curriculum, add its courses, then edit any course right where it appears in the list.</p>
+          <p class="muted">A curriculum is the course list for one program, year level and semester. Work down the page: choose the program, year level and semester, add courses, then edit any course right where it appears in the list.</p>
 
           <details class="panel" id="cy-setup">
-            <summary>Setup: curriculum years and programs</summary>
-            <div id="cy-years-panel">
-              <h3>Curriculum Years</h3>
-              <p class="muted">Each version, for example 2022-2027, keeps its own course list. Do this first if the list is empty.</p>
-              <form id="cy-year-form" class="toolbar editor-only">
-                <label>Valid Years <input id="cy-year-input" placeholder="2022-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
-                <button type="submit" id="cy-year-submit" class="primary">Add Curriculum Year</button>
-              </form>
-              <div id="cy-year-alert" class="alert" role="alert" hidden></div>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>Curriculum Year</th><th>Courses</th><th>Action</th></tr></thead>
-                  <tbody id="cy-year-body"></tbody>
-                </table>
-              </div>
-            </div>
+            <summary>Manage programs</summary>
             <div id="cy-programs-panel">
-              <h3>Programs</h3>
               <form id="program-form" class="toolbar editor-only">
                 <input type="hidden" id="program-id">
                 <label>Program Name <input id="program-name" required maxlength="160"></label>
@@ -249,7 +233,6 @@
           <div class="curriculum-step">
             <h3><span class="step-badge" aria-hidden="true">1</span> Choose a curriculum</h3>
             <div class="toolbar">
-              <label>Curriculum Year <select id="cy-year" data-no-combo></select></label>
               <label>Program <select id="cy-program" data-no-combo></select></label>
               <label>Year Level
                 <select id="cy-level" data-no-combo>
@@ -261,7 +244,6 @@
                   <option value="">All Semesters</option>
                   <option value="1st">1st Semester</option>
                   <option value="2nd">2nd Semester</option>
-                  <option value="Summer">Summer</option>
                 </select>
               </label>
             </div>
@@ -296,7 +278,7 @@
             <h3><span class="step-badge" aria-hidden="true">3</span> Courses in this curriculum</h3>
             <div class="table-wrap">
               <table id="cy-table">
-                <thead><tr><th>Course</th><th>Units</th><th data-col="level">Year Level</th><th data-col="semester">Semester</th><th data-col="year">Curriculum Year</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Course</th><th>Units</th><th data-col="level">Year Level</th><th data-col="semester">Semester</th><th>Actions</th></tr></thead>
                 <tbody id="cy-body"></tbody>
               </table>
             </div>
@@ -377,15 +359,15 @@
         <section id="sub-periods" role="tabpanel">
           <h2>Start a Scheduling Period</h2>
           <form id="period-form" class="grid editor-only">
-            <label>Academic Year <input id="period-year" placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
-            <label>Semester <select id="period-semester" required><option value="1st">1st</option><option value="2nd">2nd</option><option value="Summer">Summer</option></select></label>
+            <label>Academic Year <input id="period-year" value="2025-2026" pattern="[0-9]{4}-[0-9]{4}" readonly required></label>
+            <label>Semester <select id="period-semester" required><option value="1st">1st Semester</option><option value="2nd">2nd Semester</option></select></label>
             <label>Starts On <input id="period-start" type="date" required></label>
             <label>Ends On <input id="period-end" type="date" required></label>
             <label>Copy Schedules From <select id="period-copy"><option value="">Start empty</option></select></label>
             <div class="form-actions"><button type="submit" id="period-submit" class="primary">Start Period</button>
               <button type="button" id="period-cancel" hidden>Cancel Edit</button></div>
           </form>
-          <p class="muted">Copied schedules are revalidated and start as drafts. Set accurate dates here for calendar exports.</p>
+          <p class="muted">ScholarSched uses the 1st and 2nd Semester of 2025-2026 only. Copied schedules are revalidated and start as drafts. Set accurate dates here for calendar exports.</p>
           <div id="period-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap"><table><thead><tr><th>Academic Year</th><th>Semester</th><th>Date Range</th><th>Status</th><th>Actions</th></tr></thead><tbody id="period-body"></tbody></table></div>
         </section>
@@ -395,12 +377,12 @@
         <div class="subtabs" role="tablist" aria-label="System settings" data-subtabs><button type="button" role="tab" data-sub="sub-users">User Management</button><button type="button" role="tab" data-sub="sub-backup">Backup &amp; Restore</button></div>
         <section id="sub-users" role="tabpanel">
           <h2>User Management</h2>
-          <p class="muted">Add a login for another Program Head or for a teacher. Share the password with them directly.</p>
+          <p class="muted">Add a login for another Program Head or for a teacher, then share the password with them directly. The email of an existing account can be changed here too, and the new address works the next time they sign in.</p>
           <form id="user-form" class="grid">
             <input type="hidden" id="user-id">
             <label>Full Name <input id="user-name" required maxlength="160"></label>
-            <label>Email <input id="user-email" type="email" autocomplete="off" required></label>
-            <label>Password <input id="user-password" type="password" minlength="6" autocomplete="new-password" required><small class="muted">At least 6 characters.</small></label>
+            <label>Email <input id="user-email" type="email" autocomplete="off" required><small id="user-email-note" class="muted" hidden>Editing emails and creating logins that work immediately needs migration v11. Run supabase/migration_v11.sql, then reload.</small></label>
+            <label>Password <input id="user-password" type="password" minlength="6" autocomplete="new-password" required><small class="muted">At least 6 characters. Leave it blank when editing an account.</small></label>
             <label>Role <select id="user-role" data-no-combo><option value="teacher">Teacher</option><option value="admin">Program Head</option></select></label>
             <label id="user-teacher-wrap">Linked Teacher <select id="user-teacher"></select><small class="muted">Links this login to a faculty record.</small></label>
             <div class="form-actions">
@@ -409,7 +391,7 @@
             </div>
           </form>
           <div id="user-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Linked Teacher</th><th>Actions</th></tr></thead><tbody id="user-body"></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Linked Teacher</th><th>Actions</th></tr></thead><tbody id="user-body"></tbody></table></div>
         </section>
         <section id="sub-backup" role="tabpanel" hidden>
           <h2>Backup &amp; Restore</h2>

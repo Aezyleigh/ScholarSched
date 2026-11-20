@@ -30,11 +30,10 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
 - **Partner days.** Monday/Wednesday and Tuesday/Thursday can be scheduled together at
   the same time; Friday and Saturday remain individual choices.
 - **Curriculum management.** The Curriculum tab reads top to bottom in three steps: choose
-  the curriculum (curriculum year, program, year level, semester), add courses from a
-  searchable list with a View more button, then review the list. Each row has Edit, which
-  turns that row into inputs for the course code, name and units, plus Remove from this
-  curriculum. Curriculum years and programs sit in a collapsible setup panel at the top.
-  Schedule courses come from the active curriculum.
+  the program, year level and semester, add courses from a searchable list with a View more
+  button, then review the list. Each row has Edit, which turns that row into inputs for the
+  course code, name and units, plus Remove from this curriculum. Programs sit in a collapsible
+  panel at the top. Schedule courses come from the active curriculum.
 - **Faculty reports.** Individual availability and a summary of all faculty, class counts,
   weekly load, and availability are available in Reports. Reports can be downloaded as CSV/PDF
   or exported as a calendar file.
@@ -93,12 +92,13 @@ ScholarSched/
     ├── migration_v8.sql Read-only teacher access and richer teacher schedule rows
     ├── migration_v9.sql Combined classes: one meeting shared by any courses
     ├── migration_v10.sql 2025-2026 1st and 2nd Semester periods
+    ├── migration_v11.sql Plain curricula, account emails and ready-to-use logins
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, v8, v9, and v10 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, v8, v9, v10, and v11 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
@@ -125,7 +125,16 @@ Migration v10 creates the 2025-2026 1st and 2nd Semester periods and makes 1st S
 period, because that academic year is the school's available data. Only one semester can receive
 schedules at a time; both periods stay in **Rooms & Periods**, where the Program Head starts the
 other semester when it is time to schedule it. Any earlier period, such as 2026-2027, is kept with
-its schedules but is no longer active.
+its schedules but is no longer active. ScholarSched only offers the 2025-2026 year and its 1st and
+2nd Semester in its pickers.
+
+Migration v11 removes curriculum years, so a curriculum is simply the course list for a program,
+year level and semester. Courses that were split across curriculum years are merged, keeping the
+oldest row for each course. It also adds `profiles.email` and two Program Head helpers:
+`admin_create_staff` creates an already-confirmed login that can sign in immediately, and
+`admin_update_staff_email` changes the email of an existing account. Until it is run, Settings can
+still add accounts through Supabase sign-up, but cannot edit emails, and a new account may need to
+confirm its email first.
 
 ## Security notes
 
@@ -143,9 +152,10 @@ its schedules but is no longer active.
 - Faculty availability is edited under Faculty (days and time windows per teacher) and reviewed in
   Reports. New teachers start with Monday-Saturday, 8:00 AM-5:00 PM windows.
 - Year levels remain managed in Supabase Table Editor.
-- Creating a staff account in Settings uses Supabase sign-up. If email confirmation is enabled in
-  Supabase, the new user must confirm their email before they can log in; the password reset link
-  from the login page depends on the project's email settings too.
+- After migration v11, Settings creates confirmed logins directly, so a new account can sign in
+  with the email and password entered there, and the email of an existing account can be changed.
+  Without v11 the app falls back to Supabase sign-up, where a new user may have to confirm their
+  email first. The password reset link from the login page depends on the project's email settings.
 - A restore writes configuration data back in full, but schedules are restored into the active
   scheduling period only. Rows from other periods are listed and skipped, because the database
   validates every schedule against the active period.

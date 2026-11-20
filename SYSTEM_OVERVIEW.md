@@ -47,6 +47,7 @@ The implementation should be verified against a disposable Supabase project befo
 | `supabase/migration_v6.sql` | Allows different programs to share an exact subject, teacher, room, day, and time. Extended by v9. |
 | `supabase/migration_v9.sql` | Treats rows with the same teacher, room, day, start and end time in the active period as one combined class; combined courses are not conflicts and count once toward load. |
 | `supabase/migration_v10.sql` | Creates the 2025-2026 1st and 2nd Semester periods and makes 1st Semester active, keeping earlier periods and their schedules. |
+| `supabase/migration_v11.sql` | Drops curriculum years so each course list is one program/year level/semester; adds `profiles.email` and Program Head helpers to create confirmed logins and change account emails. |
 | `supabase/seed.sql` | Sample active period, programs, years, courses, teachers, and rooms. |
 | `supabase/users.sql` | Creates profile-role links for Auth users matched by email. |
 | `README.md` | Feature and setup summary, including migration order and deployment notes. |
@@ -56,16 +57,16 @@ The implementation should be verified against a disposable Supabase project befo
 
 The SQL source defines these tables and relationships:
 
-- `scheduling_periods`: academic year, semester (`1st`, `2nd`, `Summer`), active flag, and optional v4 start/end dates. Unique by year+semester; a partial unique index permits at most one active period.
+- `scheduling_periods`: academic year, semester (`1st`, `2nd`, `Summer` in the schema; the app offers only 2025-2026 1st and 2nd Semester), active flag, and optional v4 start/end dates. Unique by year+semester; a partial unique index permits at most one active period.
 - `programs`, `year_levels`: lookup tables with unique names.
 - `subjects`: unique course code, name, positive smallint units, and free-text prerequisite.
 - `teachers`: name, optional email, legacy free-text `availability`; v2 adds `max_load_hours` (default 24).
 - `rooms`: unique room name and physical availability; v2 adds `is_online`.
-- `profiles`: one row per `auth.users` account, role constrained to `admin` or `teacher`, optional link to a teacher.
+- `profiles`: one row per `auth.users` account, role constrained to `admin` or `teacher`, optional link to a teacher; v11 adds `email` so the Program Head can list and change login emails.
 - `schedules`: foreign keys to period, subject, program, year, teacher, and room; day/time/status fields. v2 adds `is_online`; v3 adds nullable `schedule_pair_id`.
 - `break_periods` (v2): labeled time windows; seed behavior inserts a lunch break from noon to 1 PM only when the table is empty.
 - `teacher_availability` (v3): one row per teacher/day, with start and end times. The primary key limits the model to one window per faculty member per day.
-- `curriculum_courses` (v3): subject/program/year/semester mapping, unique for each combination.
+- `curriculum_courses` (v3): subject/program/year/semester mapping, unique for each combination. v7 added an optional curriculum year; v11 removed it and merged duplicate rows.
 
 `supabase/schema.sql` adds foreign keys and checks, including valid days/status, positive course units, end after start, and GiST exclusion constraints preventing overlapping room, teacher, and program/year schedules in one period. v2 changes the room exclusion constraint so concurrent online schedules may share the virtual room. v3 adds a shared validator and a transaction advisory lock for schedule writes. v4 serializes active-period transitions, validates periods before activation, and copies source schedules as drafts in one transaction.
 
