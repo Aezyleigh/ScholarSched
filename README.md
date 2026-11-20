@@ -76,31 +76,43 @@ ScholarSched/
     ├── migration_v4.sql Period dates/lifecycle/copy and conflict suggestions
     ├── migration_v5.sql Full-break-spanning class validation
     ├── migration_v6.sql Shared meetings across programs
+    ├── migration_v7.sql Departments, room details, curriculum years, semester views, backup helper
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, v5, and v6 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, and v7 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
+
+Migration v7 adds faculty departments, room capacity and type, curriculum versions such as
+2022-2027, semester columns on the public schedule views, and a helper that resets id sequences after
+a restore. Until it is run, the app hides those controls and keeps working with the older tables.
 
 ## Security notes
 
 - The anon key is public by design. Data is protected by **Row Level Security** policies in
   `supabase/schema.sql`. Do not loosen them without testing (see [TESTING.md](TESTING.md)).
-- Students read only the `student_schedule` view: published schedules for the active period,
-  with no drafts and no teacher emails.
+- Students read only the `student_schedule` view: published schedules only, with no drafts and no
+  teacher emails. After migration v7 the view also exposes the semester and academic year, so the
+  student page can switch between 1st and 2nd Semester for the active academic year.
 - Teachers read only their own published schedules through the `teacher_schedule` view.
 - Only the Program Head can create, update, or delete schedules, and only drafts can be deleted.
 - Use real passwords for real accounts and delete the sample accounts before real use.
 
 ## Limitations
 
-- Faculty availability can be reviewed in Reports; administrators manage its day/time windows
-  in Supabase Table Editor. The migration seeds Monday-Saturday, 8:00 AM-5:00 PM windows.
-- Year levels and faculty availability windows remain managed in Supabase Table Editor.
+- Faculty availability is edited under Faculty (days and time windows per teacher) and reviewed in
+  Reports. New teachers start with Monday-Saturday, 8:00 AM-5:00 PM windows.
+- Year levels remain managed in Supabase Table Editor.
+- Creating a staff account in Settings uses Supabase sign-up. If email confirmation is enabled in
+  Supabase, the new user must confirm their email before they can log in; the password reset link
+  from the login page depends on the project's email settings too.
+- A restore writes configuration data back in full, but schedules are restored into the active
+  scheduling period only. Rows from other periods are listed and skipped, because the database
+  validates every schedule against the active period.
 - Period copy is atomic: if a copied schedule fails validation, the period and copied rows roll back.
 - RLS and protected RPCs restrict room/period management and bulk schedule changes to the Program Head.
 - An internet connection is required for Supabase and the pinned PDF library.

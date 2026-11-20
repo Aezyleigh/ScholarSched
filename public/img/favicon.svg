@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ScholarSched">
+  <rect width="64" height="64" rx="14" fill="#073d27"/>
+  <rect x="10" y="15" width="44" height="39" rx="6" fill="#f6f5ef" stroke="#c2ac52" stroke-width="3"/>
+  <path d="M10 27h44" stroke="#c2ac52" stroke-width="3"/>
+  <rect x="18" y="9" width="5" height="12" rx="2.5" fill="#c2ac52"/>
+  <rect x="41" y="9" width="5" height="12" rx="2.5" fill="#c2ac52"/>
+  <path d="M21 41.5l6.5 6.5L43 32.5" fill="none" stroke="#0b5a36" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

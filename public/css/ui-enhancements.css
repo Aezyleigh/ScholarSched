@@ -133,3 +133,119 @@
 .subtabs button:hover { background: var(--ui-soft); color: var(--ui-strong); }
 .subtabs button[aria-selected="true"] { color: var(--ui); border-bottom-color: var(--ui); background: var(--ui-soft); }
 .subtabs button:focus-visible { outline: 3px solid var(--focus, #0d6b43); outline-offset: -2px; }
+
+/* ---------- Login helpers ---------- */
+.login-help { margin: .85rem 0 0; }
+.link-button {
+  min-height: 2rem;
+  padding: .15rem .25rem;
+  border: 0;
+  background: none;
+  color: var(--ui);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-button:hover { background: var(--ui-soft); border-color: transparent; }
+
+/* ---------- Collapsible panels (catalog, programs) ---------- */
+.panel {
+  margin-top: 1rem;
+  padding: .85rem 1.1rem 1.1rem;
+  background: var(--sunken, #faf9f4);
+  border: 1px solid var(--line, #dde1d8);
+  border-radius: var(--radius, 10px);
+}
+.panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--green-900, #073d27);
+}
+.panel > summary:hover { color: var(--ui); }
+.panel[open] > summary { margin-bottom: .85rem; }
+.panel form { margin-bottom: .25rem; }
+
+/* ---------- Curriculum workspace ---------- */
+.curriculum-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.curriculum-main h3, .curriculum-side h3 { margin-top: 0; }
+.curriculum-side {
+  padding: 1rem;
+  background: var(--green-050, #f2f7f4);
+  border: 1px solid var(--line, #dde1d8);
+  border-radius: var(--radius, 10px);
+}
+.check-grid {
+  display: grid;
+  gap: .15rem .5rem;
+  max-height: 21rem;
+  overflow: auto;
+  padding: .5rem;
+  background: #fff;
+  border: 1px solid var(--line-strong, #c6ccc0);
+  border-radius: var(--radius-sm, 6px);
+}
+.check-grid label {
+  flex-direction: row;
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+  padding: .3rem .35rem;
+  border-radius: var(--radius-sm, 6px);
+  font-weight: 400;
+  color: var(--text, #1b2a22);
+  cursor: pointer;
+}
+.check-grid label:hover { background: var(--ui-soft); }
+.check-grid label.is-added { color: var(--muted, #56645c); cursor: default; }
+.check-grid .check-meta { margin-left: auto; font-size: .8rem; color: var(--muted, #56645c); white-space: nowrap; }
+.check-grid label.is-added .check-meta { color: var(--ok-text, #11603a); font-weight: 600; }
+@media (max-width: 900px) {
+  .curriculum-layout { grid-template-columns: 1fr; }
+}
+
+/* ---------- Faculty availability ---------- */
+.avail-fieldset {
+  grid-column: 1 / -1;
+  margin: 0 0 .9rem;
+  padding: .75rem 1rem 1rem;
+  border: 1px solid var(--line, #dde1d8);
+  border-radius: var(--radius, 10px);
+}
+.avail-fieldset legend { padding: 0 .35rem; font-weight: 600; color: var(--green-900, #073d27); }
+.avail-fieldset > .muted { margin: 0 0 .6rem; font-size: .88rem; }
+.avail-grid { display: grid; gap: .35rem; }
+.avail-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, auto) minmax(7rem, auto);
+  gap: .5rem;
+  align-items: center;
+}
+.avail-row .check-label { margin: 0; font-weight: 600; }
+.avail-row input[type="time"] { min-height: 2.3rem; padding: .35rem .5rem; }
+.avail-row input[type="time"]:disabled { background: var(--sunken, #faf9f4); color: var(--muted, #56645c); }
+@media (max-width: 620px) {
+  .avail-row { grid-template-columns: 1fr 1fr; }
+  .avail-row .check-label { grid-column: 1 / -1; }
+}
+
+/* ---------- File input and backup result ---------- */
+input[type="file"] {
+  min-height: 2.6rem;
+  padding: .45rem .5rem;
+  background: #fff;
+  border: 1px solid var(--line-strong, #c6ccc0);
+  border-radius: var(--radius-sm, 6px);
+  font-size: .88rem;
+}
+#backup-summary ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+
+/* ---------- Status note under a form field ---------- */
+.field-note button { min-height: 2rem; padding: .25rem .6rem; margin-left: .35rem; }
+
+/* The login card stretches its buttons; keep the inline help link compact. */
+.login .link-button { width: auto; display: inline; }

@@ -18,7 +18,16 @@ let editingPairId = null;
 let currentSemester = null;
 let curriculumLoadError = null;
 let periodLoadError = null;
-let editingCurriculumId = null;
+let currentCurriculumYear = null;
+let currentUsers = [];
+const SCHOOL_YEAR_LABEL = '2025-2026';   // shown under the ScholarSched title
+let activeYear = null;                    // academic year of the active period, used for data
+
+/* Optional v7 tables and columns. Detected once so the app still runs on an older database. */
+const caps = { departments: false, roomMeta: false, curriculumYears: false, semesterViews: false, identities: false };
+const inviteClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'scholarsched-new-account' },
+});
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SECOND_DAY = { Monday: 'Wednesday', Wednesday: 'Monday', Tuesday: 'Thursday', Thursday: 'Tuesday' };
@@ -64,19 +73,29 @@ function showLogin() {
   $('app-view').hidden = true;
   $('student-view').hidden = true;
   $('login-view').hidden = false;
+  $('forgot-form').hidden = true;
+  $('recovery-form').hidden = true;
+  $('forgot-alert').hidden = true;
+  $('recovery-alert').hidden = true;
+  $('login-form').hidden = false;
+  $('login-error').className = 'alert error';
+  $('login-error').hidden = true;
 }
 
 function showTab(name) {
-  ['schedules', 'reports', 'curriculum', 'setup'].forEach((t) => {
+  ['schedules', 'reports', 'curriculum', 'faculty', 'setup', 'settings'].forEach((t) => {
     const panel = $(`tab-${t}`);
     const tab = document.querySelector(`[data-tab="${t}"]`);
+    if (!panel || !tab) return;
     panel.hidden = t !== name;
     tab.setAttribute('aria-selected', String(t === name));
     tab.tabIndex = t === name ? 0 : -1;
   });
   if (name === 'reports') renderReport();
   if (name === 'curriculum') renderCurriculum();
+  if (name === 'faculty') renderFaculty();
   if (name === 'setup') renderSetup();
+  if (name === 'settings') loadUsers();
 }
 
 async function showApp(user) {
@@ -117,6 +136,7 @@ async function loadProfile(authUser) {
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errBox = $('login-error');
+  errBox.className = 'alert error';
   errBox.hidden = true;
   const submitBtn = e.target.querySelector('button[type="submit"]');
   const done = () => { submitBtn.disabled = false; submitBtn.classList.remove('is-busy'); };
@@ -152,6 +172,85 @@ $('logout-btn').addEventListener('click', async () => {
   showStudent();
 });
 
+/* ---------- forgot and reset password ---------- */
+
+function setLoginPanel(name) {
+  $('login-form').hidden = name !== 'login';
+  $('forgot-form').hidden = name !== 'forgot';
+  $('recovery-form').hidden = name !== 'recovery';
+  $('forgot-alert').hidden = true;
+  $('recovery-alert').hidden = true;
+}
+
+$('forgot-password-btn').addEventListener('click', () => {
+  setLoginPanel('forgot');
+  $('forgot-email').value = $('login-email').value.trim();
+  $('forgot-email').focus();
+});
+$('forgot-back').addEventListener('click', () => setLoginPanel('login'));
+
+$('forgot-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const box = $('forgot-alert');
+  const btn = e.target.querySelector('button[type="submit"]');
+  const email = $('forgot-email').value.trim();
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: `${location.origin}${location.pathname}`,
+  });
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  box.className = error ? 'alert error' : 'alert ok';
+  box.textContent = error
+    ? `The reset email could not be sent. ${error.message}`
+    : `If an account exists for ${email}, a password reset link is on its way. Check the inbox and the spam folder.`;
+  box.hidden = false;
+});
+
+function showRecovery() {
+  $('app-view').hidden = true;
+  $('student-view').hidden = true;
+  $('login-view').hidden = false;
+  setLoginPanel('recovery');
+  $('recovery-password').focus();
+}
+
+sb.auth.onAuthStateChange((event) => {
+  if (event === 'PASSWORD_RECOVERY') showRecovery();
+});
+
+$('recovery-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const box = $('recovery-alert');
+  const password = $('recovery-password').value;
+  if (password !== $('recovery-confirm').value) {
+    box.className = 'alert error';
+    box.textContent = 'The two passwords do not match.';
+    box.hidden = false;
+    return;
+  }
+  const btn = e.target.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  const { error } = await sb.auth.updateUser({ password });
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  if (error) {
+    box.className = 'alert error';
+    box.textContent = `The password was not changed. ${error.message}`;
+    box.hidden = false;
+    return;
+  }
+  $('recovery-form').reset();
+  await sb.auth.signOut();
+  setLoginPanel('login');
+  const loginBox = $('login-error');
+  loginBox.className = 'alert ok';
+  loginBox.textContent = 'Password updated. Log in with your new password.';
+  loginBox.hidden = false;
+});
+
 /* ---------- period label and dropdowns ---------- */
 
 async function loadPeriodLabel() {
@@ -164,16 +263,55 @@ async function loadPeriodLabel() {
   if (error) console.error('Active scheduling period lookup failed:', error);
   currentPeriod = data || null;
   currentSemester = data?.semester || null;
-  $('period-label').textContent = data
-    ? `${data.academic_year}, ${data.semester} Semester`
-    : 'No active scheduling period';
+  activeYear = data?.academic_year || null;
+  $('period-label').textContent = SCHOOL_YEAR_LABEL;
+  if (data && editingId === null) $('f-semester').value = data.semester;
+  updateSemesterNote();
 }
+
+/* Explains which semester a new schedule is saved into, with a shortcut when the
+   chosen semester has its own period that is not active yet. */
+function updateSemesterNote() {
+  const note = $('semester-note');
+  if (!note) return;
+  const semester = $('f-semester').value;
+  const label = `${semester} Semester`;
+  if (!currentPeriod) {
+    note.textContent = 'No scheduling period is active. Start one under Rooms & Periods before saving.';
+    return;
+  }
+  if (semester === currentSemester) {
+    note.textContent = `Schedules are saved to the active ${label} period (${currentPeriod.academic_year}).`;
+    return;
+  }
+  const target = lookups.periods.find((p) => p.semester === semester);
+  note.innerHTML = `Only the active period can receive schedules. You chose ${esc(label)}, but ${esc(currentSemester)} Semester is active.` +
+    (target
+      ? ` <button type="button" data-activate-semester="${esc(target.id)}">Switch to ${esc(label)}</button>`
+      : ' Start that semester under Rooms & Periods first.');
+}
+$('semester-note').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-activate-semester]');
+  if (!btn) return;
+  const period = lookups.periods.find((p) => String(p.id) === btn.dataset.activateSemester);
+  if (!period || !confirm(`Start ${period.academic_year} ${period.semester} Semester? The current active period will close.`)) return;
+  btn.disabled = true;
+  const { data, error } = await sb.rpc('activate_scheduling_period', { p_period_id: period.id });
+  if (error || !data?.ok) {
+    btn.disabled = false;
+    return showFormAlert('error', error?.message || data?.error || 'Could not start that period.');
+  }
+  await loadLookups();
+  await loadSchedules();
+  showFormAlert('ok', `${period.academic_year} ${period.semester} Semester is now active.`);
+});
 
 function updateSubjectOptions() {
   const programId = $('f-program').value;
   const yearId = $('f-year').value;
+  const semester = $('f-semester').value || currentSemester;
   const assigned = new Set(lookups.curriculum
-    .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === currentSemester)
+    .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === semester)
     .map((c) => String(c.subject_id)));
   const rows = lookups.subjects.filter((s) => assigned.has(String(s.id)));
   const select = $('f-subject');
@@ -187,12 +325,13 @@ function updateSubjectOptions() {
     : periodLoadError
       ? 'Could not load the active scheduling period from Supabase. Refresh the page and try again.'
       : rows.length ? ''
-        : currentSemester
-          ? `No course is assigned to ${program}, ${year}, for the active ${currentSemester} semester. Check that curriculum entry.`
-          : 'No active scheduling period is set. Activate a period before creating schedules.';
+        : semester
+          ? `No course is assigned to ${program}, ${year}, for ${semester} Semester. Add it under Curriculum.`
+          : 'No scheduling period is set.';
 }
 $('f-program').addEventListener('change', updateSubjectOptions);
 $('f-year').addEventListener('change', updateSubjectOptions);
+$('f-semester').addEventListener('change', () => { updateSemesterNote(); updateSubjectOptions(); });
 function fillSelect(id, rows, labelFn, placeholder = '') {
   $(id).innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : '') + rows
     .map((r) => `<option value="${esc(r.id)}">${esc(labelFn(r))}</option>`)
@@ -200,15 +339,20 @@ function fillSelect(id, rows, labelFn, placeholder = '') {
 }
 
 async function loadLookups() {
-  const [subjects, programs, years, teachers, rooms, availability, curriculum, periods] = await Promise.all([
+  const teacherCols = `id, teacher_name, email, max_load_hours${caps.departments ? ', department_id' : ''}`;
+  const roomCols = `id, room_name, is_online${caps.roomMeta ? ', capacity, room_type' : ''}`;
+  const curriculumCols = `id, subject_id, program_id, year_level_id, semester${caps.curriculumYears ? ', valid_years' : ''}`;
+  const [subjects, programs, years, teachers, rooms, availability, curriculum, periods, departments, curriculumYears] = await Promise.all([
     sb.from('subjects').select('id, subject_code, subject_name, units').order('subject_code'),
     sb.from('programs').select('id, program_name').order('program_name'),
     sb.from('year_levels').select('id, year_level').order('id'),
-    sb.from('teachers').select('id, teacher_name, email, max_load_hours').order('teacher_name'),
-    sb.from('rooms').select('id, room_name, is_online').order('room_name'),
+    sb.from('teachers').select(teacherCols).order('teacher_name'),
+    sb.from('rooms').select(roomCols).order('room_name'),
     sb.from('teacher_availability').select('teacher_id, day, start_time, end_time').order('day'),
-    sb.from('curriculum_courses').select('id, subject_id, program_id, year_level_id, semester').order('semester'),
+    sb.from('curriculum_courses').select(curriculumCols).order('semester'),
     sb.from('scheduling_periods').select('id, academic_year, semester, starts_on, ends_on, is_active').order('academic_year', { ascending: false }),
+    caps.departments ? sb.from('departments').select('id, department_name').order('department_name') : Promise.resolve({ data: [] }),
+    caps.curriculumYears ? sb.from('curriculum_years').select('valid_years').order('valid_years', { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
   curriculumLoadError = curriculum.error;
   if (curriculum.error) console.error('Curriculum lookup failed:', curriculum.error);
@@ -216,22 +360,44 @@ async function loadLookups() {
     subjects: subjects.data || [], programs: programs.data || [], years: years.data || [],
     teachers: teachers.data || [], rooms: rooms.data || [], availability: availability.data || [],
     curriculum: curriculum.data || [], periods: periods.data || [],
+    departments: departments.data || [], curriculumYears: (curriculumYears.data || []).map((r) => r.valid_years),
   };
+  const previousFilters = { program: $('cy-program').value, level: $('cy-level').value, semester: $('cy-semester').value };
   fillSelect('f-program', lookups.programs, (r) => r.program_name);
   fillSelect('f-year', lookups.years, (r) => r.year_level);
   fillSelect('f-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('f-room', lookups.rooms, (r) => r.room_name);
-  fillSelect('curriculum-subject', lookups.subjects, (r) => `${r.subject_code} — ${r.subject_name}`, 'Select a course');
-  fillSelect('curriculum-program', lookups.programs, (r) => r.program_name, 'Select a program');
-  fillSelect('curriculum-year', lookups.years, (r) => r.year_level);
+  fillSelect('cy-program', lookups.programs, (r) => r.program_name);
+  fillSelect('cy-level', lookups.years, (r) => r.year_level, 'All Year Levels');
+  if (previousFilters.program && lookups.programs.some((p) => String(p.id) === previousFilters.program)) $('cy-program').value = previousFilters.program;
+  if (previousFilters.level && lookups.years.some((y) => String(y.id) === previousFilters.level)) $('cy-level').value = previousFilters.level;
+  if (previousFilters.semester) $('cy-semester').value = previousFilters.semester;
+  fillSelect('teacher-dept', lookups.departments, (r) => r.department_name, 'No department');
+  fillSelect('user-teacher', lookups.teachers, (r) => r.teacher_name, 'Not linked');
   fillSelect('r-program', lookups.programs, (r) => r.program_name);
   fillSelect('r-year', lookups.years, (r) => r.year_level);
   fillSelect('r-teacher', lookups.teachers, (r) => r.teacher_name);
   fillSelect('r-room', lookups.rooms, (r) => r.room_name);
   renderCurriculum();
+  renderFaculty();
   renderSetup();
   await loadPeriodLabel();
   updateSubjectOptions();
+}
+
+/* One probe per optional feature, so a database without migration v7 still works. */
+async function detectCaps() {
+  const ok = (query) => query.then(({ error }) => !error).catch(() => false);
+  const [departments, roomMeta, curriculumYears, semesterViews] = await Promise.all([
+    ok(sb.from('departments').select('id').limit(1)),
+    ok(sb.from('rooms').select('id, capacity, room_type').limit(1)),
+    ok(sb.from('curriculum_years').select('valid_years').limit(1)),
+    ok(sb.from('student_schedule').select('id, semester').limit(1)),
+  ]);
+  caps.departments = departments;
+  caps.roomMeta = roomMeta;
+  caps.curriculumYears = curriculumYears;
+  caps.semesterViews = semesterViews;
 }
 
 function showSetupAlert(id, type, message) {
@@ -245,9 +411,15 @@ function showSetupAlert(id, type, message) {
 function renderSetup() {
   if (!$('room-body')) return;
   $('room-body').innerHTML = lookups.rooms.map((r) => `
-    <tr><td>${esc(r.room_name)}</td><td>${r.is_online ? 'Online' : 'Physical'}</td><td>
+    <tr><td>${esc(r.room_name)}</td>
+    <td>${esc(r.room_type || 'Regular Room')}</td>
+    <td>${r.capacity ? `${esc(r.capacity)} seats` : '<span class="muted">Not set</span>'}</td>
+    <td>${r.is_online ? 'Online' : 'Physical'}</td><td>
     <button type="button" data-edit-room="${r.id}">Edit</button>
     <button type="button" class="danger" data-remove-room="${r.id}">Remove</button></td></tr>`).join('');
+  // Room capacity and type are stored by migration v7.
+  $('room-type').closest('label').hidden = !caps.roomMeta;
+  $('room-capacity').closest('label').hidden = !caps.roomMeta;
   $('period-body').innerHTML = lookups.periods.map((p) => `
     <tr><td>${esc(p.academic_year)}</td><td>${esc(p.semester)}</td>
     <td>${esc(p.starts_on || 'Dates not set')} – ${esc(p.ends_on || '')}</td><td>${p.is_active ? 'Active' : 'Closed'}</td><td>
@@ -265,6 +437,8 @@ $('room-body').addEventListener('click', async (e) => {
     if (!row) return;
     $('room-id').value = row.id;
     $('room-name').value = row.room_name;
+    $('room-type').value = row.room_type || 'Regular Room';
+    $('room-capacity').value = row.capacity ?? '';
     $('room-online').checked = row.is_online;
     $('room-submit').textContent = 'Save Room';
     $('room-cancel').hidden = false;
@@ -292,6 +466,10 @@ $('room-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = $('room-id').value;
   const values = { room_name: $('room-name').value.trim(), is_online: $('room-online').checked };
+  if (caps.roomMeta) {
+    values.room_type = $('room-type').value;
+    values.capacity = $('room-capacity').value ? Number($('room-capacity').value) : null;
+  }
   const { error } = id
     ? await sb.from('rooms').update(values).eq('id', Number(id))
     : await sb.from('rooms').insert(values);
@@ -392,11 +570,31 @@ function showCurriculumAlert(id, type, message) {
   if (window.toast) window.toast(cleanAlertText(message), type);
 }
 
+/* Curriculum versions such as 2022-2027. Without migration v7 the app uses a
+   single unlabeled curriculum and hides the version controls. */
+function curriculumVersionList() {
+  if (!caps.curriculumYears) return [];
+  const saved = lookups.curriculumYears || [];
+  const used = lookups.curriculum.map((c) => c.valid_years).filter(Boolean);
+  return [...new Set([...saved, ...used])].sort((a, b) => b.localeCompare(a));
+}
+
+function curriculumRows(programId, levelId, semester) {
+  const version = caps.curriculumYears ? currentCurriculumYear : '';
+  return (lookups.curriculum || []).filter((c) =>
+    (!programId || String(c.program_id) === String(programId))
+    && (!levelId || String(c.year_level_id) === String(levelId))
+    && (!semester || c.semester === semester)
+    && (!version || (c.valid_years || '') === version));
+}
+
 function renderCurriculum() {
+  if (!$('cy-body')) return;
   const subjects = lookups.subjects || [];
   const subjectById = new Map(subjects.map((s) => [String(s.id), s]));
   const programById = new Map(lookups.programs.map((p) => [String(p.id), p]));
   const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
+
   $('course-body').innerHTML = subjects.map((s) => `
     <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
     <td><button type="button" data-edit-course="${s.id}">Edit</button>
@@ -404,19 +602,70 @@ function renderCurriculum() {
   $('program-body').innerHTML = lookups.programs.map((p) => `
     <tr><td>${esc(p.program_name)}</td><td><button type="button" data-edit-program="${p.id}">Edit</button>
     <button type="button" class="danger" data-remove-program="${p.id}">Remove</button></td></tr>`).join('');
-  $('teacher-body').innerHTML = lookups.teachers.map((t) => `
-    <tr><td>${esc(t.teacher_name)}</td><td>${esc(t.email || '—')}</td><td>${esc(t.max_load_hours)} hours</td>
-    <td><button type="button" data-edit-teacher="${t.id}">Edit</button>
-    <button type="button" class="danger" data-remove-teacher="${t.id}">Remove</button></td></tr>`).join('');
-  $('curriculum-body').innerHTML = (lookups.curriculum || []).map((c) => {
-    const s = subjectById.get(String(c.subject_id));
-    const p = programById.get(String(c.program_id));
-    const y = yearById.get(String(c.year_level_id));
-    if (!s || !p || !y) return '';
-    return `<tr><td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td><td>${esc(p.program_name)}</td>
-      <td>${esc(y.year_level)}</td><td>${esc(c.semester)}</td>
-      <td><button type="button" data-edit-curriculum="${c.id}">Edit</button> <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
-  }).join('');
+
+  const versions = curriculumVersionList();
+  if (currentCurriculumYear === null) currentCurriculumYear = versions[0] || '';
+  const yearLabel = $('cy-year').closest('label');
+  const yearsPanel = $('cy-years-panel');
+  yearLabel.hidden = !caps.curriculumYears;
+  if (yearsPanel) yearsPanel.hidden = !caps.curriculumYears;
+  if (caps.curriculumYears) {
+    $('cy-year').innerHTML = '<option value="">All Curriculum Years</option>' +
+      versions.map((v) => `<option value="${esc(v)}">${esc(v)} Curriculum</option>`).join('');
+    $('cy-year').value = currentCurriculumYear;
+  }
+  $('cy-year-body').innerHTML = versions.map((v) => {
+    const count = lookups.curriculum.filter((c) => c.valid_years === v).length;
+    return `<tr><td>${esc(v)}</td><td>${count}</td><td>
+      <button type="button" data-open-year="${esc(v)}" ${v === currentCurriculumYear ? 'disabled' : ''}>View</button>
+      <button type="button" class="danger" data-remove-year="${esc(v)}">Remove</button></td></tr>`;
+  }).join('') || '<tr><td colspan="3" class="muted">No curriculum years yet. Add one above, for example 2022-2027.</td></tr>';
+
+  const programId = $('cy-program').value;
+  const levelId = $('cy-level').value;
+  const semester = $('cy-semester').value;
+  const rows = curriculumRows(programId, levelId, semester)
+    .filter((c) => subjectById.has(String(c.subject_id)))
+    .sort((a, b) => {
+      const left = subjectById.get(String(a.subject_id)).subject_code;
+      const right = subjectById.get(String(b.subject_id)).subject_code;
+      return left.localeCompare(right)
+        || Number(a.year_level_id) - Number(b.year_level_id)
+        || String(a.semester).localeCompare(String(b.semester));
+    });
+
+  $('cy-body').innerHTML = rows.map((c) => {
+    const subject = subjectById.get(String(c.subject_id));
+    const level = yearById.get(String(c.year_level_id));
+    return `<tr><td>${esc(subject.subject_code)} — ${esc(subject.subject_name)}</td>
+      <td>${esc(level ? level.year_level : 'All Year Levels')}</td><td>${esc(c.semester)}</td>
+      <td>${esc(c.valid_years || '—')}</td>
+      <td><button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="muted">No courses yet for this selection. Tick courses on the right to add them.</td></tr>';
+
+  const programName = programById.get(String(programId))?.program_name || 'All programs';
+  const levelName = yearById.get(String(levelId))?.year_level || 'All year levels';
+  const versionName = caps.curriculumYears ? (currentCurriculumYear ? `${currentCurriculumYear} Curriculum` : 'All curriculum years') : 'Curriculum';
+  $('cy-summary').textContent = `${rows.length} ${rows.length === 1 ? 'course' : 'courses'} in ${versionName} for ${programName}, ${levelName}${semester ? `, ${semester} Semester` : ''}.`;
+
+  const canAdd = Boolean(programId && levelId && semester) && (!caps.curriculumYears || Boolean(currentCurriculumYear));
+  if (!canAdd) {
+    $('cy-course-list').innerHTML = `<p class="muted">${!programId || !levelId || !semester
+      ? 'Choose a program, year level and semester to add courses.'
+      : 'Choose a specific curriculum year to add courses.'}</p>`;
+    return;
+  }
+
+  const added = new Set(curriculumRows(programId, levelId, semester).map((c) => String(c.subject_id)));
+  const term = $('cy-search').value.trim().toLowerCase();
+  const list = subjects.filter((s) => !term || `${s.subject_code} ${s.subject_name}`.toLowerCase().includes(term));
+  $('cy-course-list').innerHTML = list.map((s) => {
+    const isAdded = added.has(String(s.id));
+    return `<label class="${isAdded ? 'is-added' : ''}">
+      <input type="checkbox" value="${s.id}" data-cy-course ${isAdded ? 'checked disabled' : ''}>
+      <span>${esc(s.subject_code)} — ${esc(s.subject_name)}</span>
+      <span class="check-meta">${isAdded ? 'Added' : `${esc(s.units)} units`}</span></label>`;
+  }).join('') || '<p class="muted">No course matches that search.</p>';
 }
 
 $('course-body').addEventListener('click', (e) => {
@@ -524,6 +773,95 @@ $('program-form').addEventListener('submit', async (e) => {
   await loadLookups();
 });
 
+/* ---------- faculty, departments and availability ---------- */
+
+function buildAvailabilityEditor() {
+  const box = $('teacher-avail');
+  if (!box) return;
+  box.innerHTML = DAY_ORDER.map((day) => `
+    <div class="avail-row">
+      <label class="check-label"><input type="checkbox" data-avail-day="${day}"> ${day}</label>
+      <input type="time" data-avail-start="${day}" value="08:00" aria-label="${day} start time" min="06:00" max="21:00">
+      <input type="time" data-avail-end="${day}" value="17:00" aria-label="${day} end time" min="06:00" max="21:00">
+    </div>`).join('');
+  box.addEventListener('change', (e) => {
+    const day = e.target.dataset.availDay;
+    if (!day) return;
+    box.querySelector(`[data-avail-start="${day}"]`).disabled = !e.target.checked;
+    box.querySelector(`[data-avail-end="${day}"]`).disabled = !e.target.checked;
+  });
+}
+
+function setAvailability(rows = []) {
+  const box = $('teacher-avail');
+  if (!box) return;
+  DAY_ORDER.forEach((day) => {
+    const row = rows.find((a) => a.day === day);
+    const check = box.querySelector(`[data-avail-day="${day}"]`);
+    const start = box.querySelector(`[data-avail-start="${day}"]`);
+    const end = box.querySelector(`[data-avail-end="${day}"]`);
+    check.checked = Boolean(row);
+    start.value = row ? String(row.start_time).slice(0, 5) : '08:00';
+    end.value = row ? String(row.end_time).slice(0, 5) : '17:00';
+    start.disabled = !row;
+    end.disabled = !row;
+  });
+}
+
+function defaultAvailability() {
+  return DAY_ORDER.map((day) => ({ day, start_time: '08:00', end_time: '17:00' }));
+}
+
+async function saveAvailability(teacherId) {
+  const rows = [];
+  for (const day of DAY_ORDER) {
+    const check = document.querySelector(`#teacher-avail [data-avail-day="${day}"]`);
+    if (!check || !check.checked) continue;
+    const start = document.querySelector(`#teacher-avail [data-avail-start="${day}"]`).value;
+    const end = document.querySelector(`#teacher-avail [data-avail-end="${day}"]`).value;
+    if (!start || !end || end <= start) return `${day}: the end time must be after the start time.`;
+    rows.push({ teacher_id: Number(teacherId), day, start_time: start, end_time: end });
+  }
+  const cleared = await sb.from('teacher_availability').delete().eq('teacher_id', Number(teacherId));
+  if (cleared.error) return 'Could not update the availability windows.';
+  if (rows.length) {
+    const { error } = await sb.from('teacher_availability').insert(rows);
+    if (error) return 'Could not save the availability windows.';
+  }
+  return null;
+}
+
+function renderFaculty() {
+  if (!$('teacher-body')) return;
+  const deptById = new Map((lookups.departments || []).map((d) => [String(d.id), d.department_name]));
+  $('teacher-body').innerHTML = lookups.teachers.map((t) => `
+    <tr><td>${esc(t.teacher_name)}</td>
+      <td>${esc(deptById.get(String(t.department_id)) || '—')}</td>
+      <td>${esc(t.email || '—')}</td>
+      <td>${esc(t.max_load_hours)} hours</td>
+      <td>${esc(availabilityText(t.id))}</td>
+      <td><button type="button" data-edit-teacher="${t.id}">Edit</button>
+      <button type="button" class="danger" data-remove-teacher="${t.id}">Remove</button></td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted">No teachers yet. Add the first one above.</td></tr>';
+  $('teacher-dept').closest('label').hidden = !caps.departments;
+  const deptSection = $('dept-form').closest('section');
+  if (deptSection) deptSection.hidden = !caps.departments;
+  renderDepartments();
+}
+
+function renderDepartments() {
+  if (!$('dept-body')) return;
+  $('dept-body').innerHTML = (lookups.departments || []).map((d) => {
+    const count = lookups.teachers.filter((t) => String(t.department_id) === String(d.id)).length;
+    return `<tr><td>${esc(d.department_name)}</td><td>${count}</td>
+      <td><button type="button" data-edit-dept="${d.id}">Edit</button>
+      <button type="button" class="danger" data-remove-dept="${d.id}">Remove</button></td></tr>`;
+  }).join('') || '<tr><td colspan="3" class="muted">No departments yet. Add one above.</td></tr>';
+}
+
+buildAvailabilityEditor();
+setAvailability(defaultAvailability());
+
 $('teacher-body').addEventListener('click', async (e) => {
   const edit = e.target.closest('[data-edit-teacher]');
   if (edit) {
@@ -533,8 +871,11 @@ $('teacher-body').addEventListener('click', async (e) => {
     $('teacher-name').value = row.teacher_name;
     $('teacher-email').value = row.email || '';
     $('teacher-load').value = row.max_load_hours;
+    if (caps.departments) $('teacher-dept').value = row.department_id ?? '';
+    setAvailability(lookups.availability.filter((a) => String(a.teacher_id) === String(row.id)));
     $('teacher-submit').textContent = 'Save Teacher';
     $('teacher-cancel').hidden = false;
+    $('teacher-alert').hidden = true;
     return;
   }
   const remove = e.target.closest('[data-remove-teacher]');
@@ -557,6 +898,7 @@ $('teacher-cancel').addEventListener('click', () => {
   $('teacher-submit').textContent = 'Add Teacher';
   $('teacher-cancel').hidden = true;
   $('teacher-alert').hidden = true;
+  setAvailability(defaultAvailability());
 });
 
 $('teacher-form').addEventListener('submit', async (e) => {
@@ -567,63 +909,193 @@ $('teacher-form').addEventListener('submit', async (e) => {
     email: $('teacher-email').value.trim() || null,
     max_load_hours: Number($('teacher-load').value),
   };
-  const { error } = id
-    ? await sb.from('teachers').update(values).eq('id', Number(id))
-    : await sb.from('teachers').insert(values);
-  if (error) return showCurriculumAlert('teacher-alert', 'error', 'Could not save the teacher. Check the entered details and try again.');
+  if (caps.departments) {
+    values.department_id = $('teacher-dept').value ? Number($('teacher-dept').value) : null;
+  }
+  let teacherId = id ? Number(id) : null;
+  if (id) {
+    const { error } = await sb.from('teachers').update(values).eq('id', Number(id));
+    if (error) return showCurriculumAlert('teacher-alert', 'error', 'Could not save the teacher. Check the entered details and try again.');
+  } else {
+    const { data, error } = await sb.from('teachers').insert(values).select('id').single();
+    if (error || !data) return showCurriculumAlert('teacher-alert', 'error', 'Could not save the teacher. Check the entered details and try again.');
+    teacherId = data.id;
+  }
+  const problem = await saveAvailability(teacherId);
+  if (problem) return showCurriculumAlert('teacher-alert', 'error', problem);
   $('teacher-cancel').click();
   showCurriculumAlert('teacher-alert', 'ok', id ? 'Teacher updated.' : 'Teacher added.');
   await loadLookups();
 });
 
-$('curriculum-cancel').addEventListener('click', () => {
-  editingCurriculumId = null;
-  $('curriculum-form').reset();
-  $('curriculum-submit').textContent = 'Add to Curriculum';
-  $('curriculum-cancel').hidden = true;
-  $('curriculum-alert').hidden = true;
-});
+/* ---------- departments ---------- */
 
-$('curriculum-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const values = {
-    subject_id: Number($('curriculum-subject').value),
-    program_id: Number($('curriculum-program').value),
-    year_level_id: Number($('curriculum-year').value),
-    semester: $('curriculum-semester').value,
-  };
-  const { error } = editingCurriculumId
-    ? await sb.from('curriculum_courses').update(values).eq('id', editingCurriculumId)
-    : await sb.from('curriculum_courses').insert(values);
-  if (error) return showCurriculumAlert('curriculum-alert', 'error', 'Could not save this curriculum entry. It may already exist.');
-  const wasEditing = editingCurriculumId !== null;
-  editingCurriculumId = null;
-  $('curriculum-form').reset();
-  $('curriculum-submit').textContent = 'Add to Curriculum';
-  $('curriculum-cancel').hidden = true;
-  showCurriculumAlert('curriculum-alert', 'ok', wasEditing ? 'Curriculum entry updated.' : 'Course added to the curriculum.');
+$('dept-body').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-dept]');
+  if (edit) {
+    const row = lookups.departments.find((d) => String(d.id) === edit.dataset.editDept);
+    if (!row) return;
+    $('dept-id').value = row.id;
+    $('dept-name').value = row.department_name;
+    $('dept-submit').textContent = 'Save Department';
+    $('dept-cancel').hidden = false;
+    return;
+  }
+  const remove = e.target.closest('[data-remove-dept]');
+  if (!remove) return;
+  const row = lookups.departments.find((d) => String(d.id) === remove.dataset.removeDept);
+  if (!row || !confirm(`Remove ${row.department_name}? Its teachers keep their records but lose the department.`)) return;
+  const { error } = await sb.from('departments').delete().eq('id', row.id);
+  if (error) return showCurriculumAlert('dept-alert', 'error', 'Could not remove the department. Check your permissions and try again.');
+  if ($('dept-id').value === String(row.id)) $('dept-cancel').click();
+  showCurriculumAlert('dept-alert', 'ok', 'Department removed.');
   await loadLookups();
 });
 
-$('curriculum-body').addEventListener('click', async (e) => {
-  const edit = e.target.closest('[data-edit-curriculum]');
-  if (edit) {
-    const row = lookups.curriculum.find((c) => String(c.id) === edit.dataset.editCurriculum);
-    if (!row) return;
-    editingCurriculumId = row.id;
-    $('curriculum-subject').value = row.subject_id;
-    $('curriculum-program').value = row.program_id;
-    $('curriculum-year').value = row.year_level_id;
-    $('curriculum-semester').value = row.semester;
-    $('curriculum-submit').textContent = 'Save Curriculum';
-    $('curriculum-cancel').hidden = false;
+$('dept-cancel').addEventListener('click', () => {
+  $('dept-form').reset();
+  $('dept-id').value = '';
+  $('dept-submit').textContent = 'Add Department';
+  $('dept-cancel').hidden = true;
+  $('dept-alert').hidden = true;
+});
+
+$('dept-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('dept-id').value;
+  const values = { department_name: $('dept-name').value.trim() };
+  const { error } = id
+    ? await sb.from('departments').update(values).eq('id', Number(id))
+    : await sb.from('departments').insert(values);
+  if (error) return showCurriculumAlert('dept-alert', 'error', 'Could not save the department. Check that its name is unique.');
+  $('dept-cancel').click();
+  showCurriculumAlert('dept-alert', 'ok', id ? 'Department updated.' : 'Department added.');
+  await loadLookups();
+});
+
+function curriculumSelection() {
+  return {
+    programId: $('cy-program').value,
+    levelId: $('cy-level').value,
+    semester: $('cy-semester').value,
+  };
+}
+
+$('cy-program').addEventListener('change', renderCurriculum);
+$('cy-level').addEventListener('change', renderCurriculum);
+$('cy-semester').addEventListener('change', renderCurriculum);
+$('cy-search').addEventListener('input', renderCurriculum);
+$('cy-year').addEventListener('change', () => {
+  currentCurriculumYear = $('cy-year').value;
+  renderCurriculum();
+});
+
+$('cy-add').addEventListener('click', async (e) => {
+  const { programId, levelId, semester } = curriculumSelection();
+  if (!programId || !levelId || !semester) {
+    return showCurriculumAlert('cy-alert', 'error', 'Choose a program, year level and semester before adding courses.');
+  }
+  if (caps.curriculumYears && !currentCurriculumYear) {
+    return showCurriculumAlert('cy-alert', 'error', 'Choose a specific curriculum year before adding courses.');
+  }
+  const chosen = [...document.querySelectorAll('[data-cy-course]:checked:not(:disabled)')].map((box) => Number(box.value));
+  if (!chosen.length) return showCurriculumAlert('cy-alert', 'error', 'Tick at least one course to add.');
+  const values = chosen.map((subjectId) => {
+    const row = { subject_id: subjectId, program_id: Number(programId), year_level_id: Number(levelId), semester };
+    if (caps.curriculumYears) row.valid_years = currentCurriculumYear;
+    return row;
+  });
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  const { error } = await sb.from('curriculum_courses').insert(values);
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  if (error) return showCurriculumAlert('cy-alert', 'error', 'Could not add the selected courses. One of them may already be in this curriculum.');
+  showCurriculumAlert('cy-alert', 'ok', `${values.length} ${values.length === 1 ? 'course' : 'courses'} added to the curriculum.`);
+  await loadLookups();
+});
+
+$('cy-quick-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { programId, levelId, semester } = curriculumSelection();
+  if (!programId || !levelId || !semester) {
+    return showCurriculumAlert('cy-alert', 'error', 'Choose a program, year level and semester first.');
+  }
+  if (caps.curriculumYears && !currentCurriculumYear) {
+    return showCurriculumAlert('cy-alert', 'error', 'Choose a specific curriculum year first.');
+  }
+  const subject = {
+    subject_code: $('cy-code').value.trim().toUpperCase(),
+    subject_name: $('cy-name').value.trim(),
+    units: Number($('cy-units').value),
+  };
+  const { data, error } = await sb.from('subjects').insert(subject).select('id').single();
+  if (error || !data) {
+    return showCurriculumAlert('cy-alert', 'error', error?.code === '23505'
+      ? 'That course code already exists. Tick it in the list instead.'
+      : 'Could not create the course. Check the code, name and units.');
+  }
+  const row = { subject_id: data.id, program_id: Number(programId), year_level_id: Number(levelId), semester };
+  if (caps.curriculumYears) row.valid_years = currentCurriculumYear;
+  const added = await sb.from('curriculum_courses').insert(row);
+  if (added.error) {
+    return showCurriculumAlert('cy-alert', 'error', 'The course was created but could not be added to this curriculum.');
+  }
+  $('cy-quick-form').reset();
+  $('cy-quick-form').closest('details').open = false;
+  showCurriculumAlert('cy-alert', 'ok', `${subject.subject_code} was created and added to the curriculum.`);
+  await loadLookups();
+});
+
+$('cy-year-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const value = $('cy-year-input').value.trim();
+  if (!caps.curriculumYears) {
+    return showCurriculumAlert('cy-year-alert', 'error', 'Run supabase/migration_v7.sql to enable curriculum years.');
+  }
+  const { error } = await sb.from('curriculum_years').insert({ valid_years: value });
+  if (error) {
+    return showCurriculumAlert('cy-year-alert', 'error', error.code === '23505'
+      ? 'That curriculum year already exists.'
+      : 'Could not add the curriculum year.');
+  }
+  currentCurriculumYear = value;
+  $('cy-year-form').reset();
+  showCurriculumAlert('cy-year-alert', 'ok', `${value} Curriculum added. Tick its courses below.`);
+  await loadLookups();
+});
+
+$('cy-year-body').addEventListener('click', async (e) => {
+  const open = e.target.closest('[data-open-year]');
+  if (open) {
+    currentCurriculumYear = open.dataset.openYear;
+    $('cy-year').value = currentCurriculumYear;
+    renderCurriculum();
+    $('cy-body').closest('section')?.scrollIntoView({ behavior: 'smooth' });
     return;
   }
+  const remove = e.target.closest('[data-remove-year]');
+  if (!remove || !caps.curriculumYears) return;
+  const value = remove.dataset.removeYear;
+  if (!confirm(`Remove the ${value} curriculum year? Its courses must be removed first.`)) return;
+  const { error } = await sb.from('curriculum_years').delete().eq('valid_years', value);
+  if (error) {
+    return showCurriculumAlert('cy-year-alert', 'error', error.code === '23503'
+      ? `The ${value} curriculum year still has courses. Remove those courses first.`
+      : 'Could not remove the curriculum year.');
+  }
+  if (currentCurriculumYear === value) currentCurriculumYear = null;
+  showCurriculumAlert('cy-year-alert', 'ok', `${value} curriculum year removed.`);
+  await loadLookups();
+});
+
+$('cy-body').addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-remove-curriculum]');
   if (!btn || !confirm('Remove this course from the curriculum?')) return;
   const { error } = await sb.from('curriculum_courses').delete().eq('id', Number(btn.dataset.removeCurriculum));
-  if (error) return showCurriculumAlert('curriculum-alert', 'error', 'Could not remove this curriculum entry.');
-  showCurriculumAlert('curriculum-alert', 'ok', 'Curriculum entry removed.');
+  if (error) return showCurriculumAlert('cy-alert', 'error', 'Could not remove this curriculum entry.');
+  showCurriculumAlert('cy-alert', 'ok', 'Curriculum entry removed.');
   await loadLookups();
 });
 /* ---------- schedule table (staff) ---------- */
@@ -637,7 +1109,7 @@ async function fetchStaffSchedules() {
                subjects(subject_code, subject_name),
                programs(program_name), year_levels(year_level),
                teachers(teacher_name), rooms(room_name, is_online),
-               scheduling_periods!inner(is_active)`)
+               scheduling_periods!inner(is_active, semester)`)
       .eq('scheduling_periods.is_active', true);
     if (error) return null;
     return data.map((s) => ({
@@ -648,6 +1120,7 @@ async function fetchStaffSchedules() {
       program_name: s.programs.program_name, year_level: s.year_levels.year_level,
       teacher_name: s.teachers.teacher_name, room_name: s.rooms.room_name,
       is_online: s.rooms.is_online,
+      semester: s.scheduling_periods?.semester || currentSemester,
     }));
   }
   const { data, error } = await sb.from('teacher_schedule').select('*');
@@ -885,6 +1358,9 @@ function resetForm() {
   editingId = null;
   editingPairId = null;
   $('schedule-form').reset();
+  if (currentSemester) $('f-semester').value = currentSemester;
+  updateSemesterNote();
+  if (lookups.subjects.length) updateSubjectOptions();
 
   $('form-title').textContent = 'Create Schedule';
   $('form-submit').textContent = 'Check Conflicts and Save as Draft';
@@ -964,6 +1440,8 @@ function startEdit(id) {
   editingPairId = s.schedule_pair_id;
   $('f-program').value = s.program_id;
   $('f-year').value = s.year_level_id;
+  $('f-semester').value = s.semester || currentSemester || $('f-semester').value;
+  updateSemesterNote();
   updateSubjectOptions();
   $('f-subject').value = s.subject_id;
   $('f-teacher').value = s.teacher_id;
@@ -994,6 +1472,11 @@ $('schedule-form').addEventListener('submit', async (e) => {
   updateClassEnd();
   if (! $('f-end').value || toMin($('f-end').value) - toMin($('f-start').value) !== 150) {
     return showFormAlert('error', 'Each class must be exactly 2 hours 30 minutes. Choose a valid start time; the end time is calculated automatically.');
+  }
+
+  const chosenSemester = $('f-semester').value;
+  if (currentSemester && chosenSemester !== currentSemester) {
+    return showFormAlert('error', `Only the active ${currentSemester} Semester period can receive schedules. Choose ${currentSemester} Semester here, or switch the active period under Rooms & Periods.`);
   }
 
   const day = $('f-day').value;
@@ -1259,6 +1742,297 @@ function downloadSchedulePdf(rows, title) {
   const [headers, data] = scheduleMatrix(rows);
   downloadPdf(headers, data, title, title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
 }
+
+/* A printable weekly grid: days across, time down, one block per class. */
+function downloadTimetablePdf(rows, title) {
+  const JsPDF = window.jspdf?.jsPDF;
+  if (!JsPDF) return alert('PDF export could not load. Check your internet connection and retry.');
+  if (!rows.length) return alert('There are no classes to put on the timetable.');
+  const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 10;
+  const days = DAY_ORDER;
+  const startMin = Math.floor(Math.min(...rows.map((r) => toMin(r.start_time))) / 60) * 60;
+  const endMin = Math.ceil(Math.max(...rows.map((r) => toMin(r.end_time))) / 60) * 60;
+  const labelW = 20;
+  const colW = (W - 2 * M - labelW) / days.length;
+  let y = 14;
+
+  doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(7, 61, 39);
+  doc.text('Unida Christian Colleges · ScholarSched', M, y);
+  y += 6;
+  doc.setFontSize(12).text(title, M, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(86, 100, 92);
+  const periodLabel = $('student-view').hidden ? $('period-label')?.textContent : $('student-period')?.textContent;
+  doc.text([periodLabel, `Generated ${new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`]
+    .filter(Boolean).join('   |   '), M, y);
+  y += 5;
+
+  const headerH = 6;
+  const slotH = 5;
+  const rowCount = Math.max(1, (endMin - startMin) / 30);
+  doc.setFillColor(7, 61, 39).rect(M, y, W - 2 * M, headerH, 'F');
+  doc.setTextColor(255).setFont('helvetica', 'bold').setFontSize(8);
+  doc.text('Time', M + 1.5, y + 4);
+  days.forEach((day, i) => doc.text(day, M + labelW + i * colW + 1.5, y + 4));
+  y += headerH;
+  const top = y;
+  const bottom = top + rowCount * slotH;
+
+  doc.setDrawColor(214, 219, 210).setTextColor(86, 100, 92).setFont('helvetica', 'normal').setFontSize(6.5);
+  for (let i = 0; i <= rowCount; i += 1) {
+    const lineY = top + i * slotH;
+    doc.line(M, lineY, W - M, lineY);
+    if (i < rowCount && i % 2 === 0) doc.text(to12h(minToTime(startMin + i * 30)), M + 1.5, lineY + 3.5);
+  }
+  doc.line(M + labelW, top, M + labelW, bottom);
+  days.forEach((_, i) => doc.line(M + labelW + i * colW, top, M + labelW + i * colW, bottom));
+  doc.line(W - M, top, W - M, bottom);
+
+  days.forEach((day, dayIndex) => {
+    const classes = rows.filter((r) => r.day === day).sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+    if (!classes.length) return;
+    // Share a day column between classes that overlap in time.
+    const lanes = [];
+    const placed = classes.map((row) => {
+      let lane = lanes.findIndex((end) => end <= toMin(row.start_time));
+      if (lane < 0) { lanes.push(0); lane = lanes.length - 1; }
+      lanes[lane] = toMin(row.end_time);
+      return { row, lane };
+    });
+    const laneW = (colW - 2) / lanes.length;
+    placed.forEach(({ row, lane }) => {
+      const blockTop = top + ((toMin(row.start_time) - startMin) / 30) * slotH + 0.8;
+      const blockH = Math.min(bottom - blockTop - 0.8, ((toMin(row.end_time) - toMin(row.start_time)) / 30) * slotH - 1.6);
+      if (blockH <= 2) return;
+      const x = M + labelW + dayIndex * colW + 1 + lane * laneW;
+      doc.setFillColor(232, 241, 235).setDrawColor(11, 90, 54);
+      doc.rect(x, blockTop, laneW - 0.8, blockH, 'FD');
+      doc.setTextColor(7, 61, 39).setFont('helvetica', 'bold').setFontSize(6.5);
+      doc.text(doc.splitTextToSize(row.subject_code, laneW - 3).slice(0, 2), x + 1.2, blockTop + 3);
+      doc.setFont('helvetica', 'normal').setFontSize(5.5);
+      doc.text(doc.splitTextToSize(`${row.room_name || ''} · ${to12h(row.start_time)}`, laneW - 3).slice(0, 2), x + 1.2, blockTop + blockH - 2.4);
+    });
+  });
+
+  doc.save(`scholarsched-timetable-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+/* ---------- user management (Program Head) ---------- */
+
+async function loadUsers() {
+  if (!$('user-body') || !currentUser || currentUser.role !== 'admin') return;
+  const { data, error } = await sb.from('profiles').select('user_id, name, role, teacher_id').order('name');
+  if (error) {
+    $('user-body').innerHTML = '<tr><td colspan="4" class="muted">Could not load the accounts.</td></tr>';
+    return;
+  }
+  currentUsers = data || [];
+  renderUsers();
+}
+
+function renderUsers() {
+  if (!$('user-body')) return;
+  const teacherById = new Map(lookups.teachers.map((t) => [String(t.id), t.teacher_name]));
+  $('user-body').innerHTML = currentUsers.map((u) => `
+    <tr><td>${esc(u.name)}${u.user_id === currentUser.id ? ' <span class="badge PUBLISHED">You</span>' : ''}</td>
+      <td>${esc(roleLabel(u.role))}</td>
+      <td>${esc(teacherById.get(String(u.teacher_id)) || '—')}</td>
+      <td><button type="button" data-edit-user="${esc(u.user_id)}">Edit</button>
+      <button type="button" class="danger" data-remove-user="${esc(u.user_id)}" ${u.user_id === currentUser.id ? 'disabled title="You cannot remove your own account"' : ''}>Remove</button></td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+}
+
+function userTeacherField() {
+  const admin = $('user-role').value === 'admin';
+  $('user-teacher-wrap').hidden = admin;
+  $('user-teacher').value = admin ? '' : $('user-teacher').value;
+}
+$('user-role').addEventListener('change', userTeacherField);
+
+$('user-body').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-user]');
+  if (edit) {
+    const user = currentUsers.find((u) => u.user_id === edit.dataset.editUser);
+    if (!user) return;
+    $('user-id').value = user.user_id;
+    $('user-name').value = user.name;
+    $('user-email').value = '';
+    $('user-password').value = '';
+    $('user-email').disabled = true;
+    $('user-password').disabled = true;
+    $('user-role').value = user.role;
+    $('user-teacher').value = user.teacher_id ?? '';
+    userTeacherField();
+    $('user-submit').textContent = 'Save Account';
+    $('user-cancel').hidden = false;
+    $('user-alert').hidden = true;
+    return;
+  }
+  const remove = e.target.closest('[data-remove-user]');
+  if (!remove || remove.disabled) return;
+  const user = currentUsers.find((u) => u.user_id === remove.dataset.removeUser);
+  if (!user || !confirm(`Remove ${user.name}'s access? Their Supabase login stays, but it will no longer have a role.`)) return;
+  const { error } = await sb.from('profiles').delete().eq('user_id', user.user_id);
+  if (error) return showCurriculumAlert('user-alert', 'error', 'Could not remove the account access.');
+  showCurriculumAlert('user-alert', 'ok', `${user.name} no longer has access.`);
+  await loadUsers();
+});
+
+$('user-cancel').addEventListener('click', () => {
+  $('user-form').reset();
+  $('user-id').value = '';
+  $('user-email').disabled = false;
+  $('user-password').disabled = false;
+  $('user-submit').textContent = 'Add Account';
+  $('user-cancel').hidden = true;
+  $('user-alert').hidden = true;
+  $('user-teacher-wrap').hidden = false;
+});
+
+$('user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('user-id').value;
+  const role = $('user-role').value;
+  const values = {
+    name: $('user-name').value.trim(),
+    role,
+    teacher_id: role === 'teacher' && $('user-teacher').value ? Number($('user-teacher').value) : null,
+  };
+  const btn = $('user-submit');
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  try {
+    if (id) {
+      const { error } = await sb.from('profiles').update(values).eq('user_id', id);
+      if (error) return showCurriculumAlert('user-alert', 'error', 'Could not save the account.');
+      $('user-cancel').click();
+      showCurriculumAlert('user-alert', 'ok', 'Account updated.');
+      await loadUsers();
+      return;
+    }
+    const email = $('user-email').value.trim();
+    const password = $('user-password').value;
+    if (password.length < 6) return showCurriculumAlert('user-alert', 'error', 'Use a password with at least 6 characters.');
+    const { data, error } = await inviteClient.auth.signUp({ email, password, options: { data: { name: values.name } } });
+    if (error) {
+      return showCurriculumAlert('user-alert', 'error', /already|registered|exists/i.test(error.message)
+        ? 'An account already exists for that email.'
+        : `The account was not created. ${error.message}`);
+    }
+    if (!data?.user) return showCurriculumAlert('user-alert', 'error', 'The account was not created. Check the email address and try again.');
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      return showCurriculumAlert('user-alert', 'error', 'An account already exists for that email.');
+    }
+    const profile = await sb.from('profiles').insert({ user_id: data.user.id, ...values });
+    if (profile.error) {
+      return showCurriculumAlert('user-alert', 'error', 'The login was created, but its role could not be saved. Add it again here with the same email to finish setup.');
+    }
+    $('user-cancel').click();
+    showCurriculumAlert('user-alert', 'ok', `Account created for ${values.name}. If email confirmation is switched on in Supabase, they must confirm the email before logging in.`);
+    await loadUsers();
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+  }
+});
+
+/* ---------- backup and restore ---------- */
+
+const BACKUP_TABLES = [
+  { name: 'departments', optional: 'departments' },
+  { name: 'programs' },
+  { name: 'year_levels' },
+  { name: 'subjects' },
+  { name: 'teachers' },
+  { name: 'teacher_availability', conflict: 'teacher_id,day' },
+  { name: 'rooms' },
+  { name: 'curriculum_years', optional: 'curriculumYears', conflict: 'valid_years' },
+  { name: 'curriculum_courses' },
+  { name: 'scheduling_periods' },
+  { name: 'schedules' },
+  { name: 'profiles', conflict: 'user_id' },
+];
+const restoreConflict = (entry) => entry.conflict || 'id';
+
+$('backup-download').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  const errors = [];
+  const tables = {};
+  try {
+    for (const entry of BACKUP_TABLES) {
+      if (entry.optional && !caps[entry.optional]) continue;
+      const { data, error } = await sb.from(entry.name).select('*');
+      if (error) { errors.push(`${entry.name}: ${error.message}`); continue; }
+      tables[entry.name] = data || [];
+    }
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+  }
+  if (!Object.keys(tables).length) {
+    return showCurriculumAlert('backup-alert', 'error', 'The backup could not read any data.');
+  }
+  const payload = { app: 'ScholarSched', version: 7, generated_at: new Date().toISOString(), tables };
+  downloadBlob(JSON.stringify(payload, null, 2), 'application/json', `scholarsched-backup-${new Date().toISOString().slice(0, 10)}.json`);
+  const counts = BACKUP_TABLES.filter((t) => tables[t.name]).map((t) => `${t.name}: ${tables[t.name].length}`).join(', ');
+  showCurriculumAlert('backup-alert', errors.length ? 'warn' : 'ok', `${errors.length ? 'Backup saved with some tables missing.' : 'Backup downloaded.'} ${counts}`);
+  $('backup-summary').innerHTML = errors.length ? `<ul>${errors.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+});
+
+$('backup-restore').addEventListener('click', async (e) => {
+  const file = $('backup-file').files?.[0];
+  if (!file) return showCurriculumAlert('backup-alert', 'error', 'Choose a backup file first.');
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch (_) {
+    return showCurriculumAlert('backup-alert', 'error', 'That file is not valid JSON.');
+  }
+  if (payload?.app !== 'ScholarSched' || !payload.tables) {
+    return showCurriculumAlert('backup-alert', 'error', 'That file is not a ScholarSched backup.');
+  }
+  if (!confirm('Restore this backup? Records with the same id are overwritten.')) return;
+
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  const report = [];
+  const failures = [];
+  try {
+    for (const entry of BACKUP_TABLES) {
+      if (entry.optional && !caps[entry.optional]) { report.push(`${entry.name}: skipped (database needs migration v7)`); continue; }
+      const rows = payload.tables[entry.name];
+      if (!Array.isArray(rows) || !rows.length) continue;
+      let body = rows;
+      if (entry.name === 'schedules') {
+        body = rows.filter((row) => currentPeriod && String(row.period_id) === String(currentPeriod.id));
+        if (body.length < rows.length) report.push(`schedules: ${rows.length - body.length} rows from other periods skipped`);
+        if (!body.length) continue;
+      }
+      const { error } = await sb.from(entry.name).upsert(body, { onConflict: restoreConflict(entry) });
+      if (error) failures.push(`${entry.name}: ${error.message}`);
+      else report.push(`${entry.name}: ${body.length} restored`);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+  }
+
+  const seq = await sb.rpc('sync_identity_sequences');
+  if (seq.error) report.push('Sequence reset unavailable. Run supabase/migration_v7.sql before adding new records.');
+  $('backup-summary').innerHTML = `<ul>${report.concat(failures).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  showCurriculumAlert('backup-alert', failures.length ? 'warn' : 'ok', failures.length
+    ? `Restore finished with ${failures.length} problem${failures.length === 1 ? '' : 's'}.`
+    : 'Restore finished.');
+  $('backup-file').value = '';
+  await loadLookups();
+  await loadSchedules();
+  await loadUsers();
+});
 function icsEscape(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/\r\n|\n|\r/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 }
@@ -1329,9 +2103,13 @@ async function showStudent() {
   ]);
 
   currentPeriod = period.data || null;
-  $('student-period').textContent = period.data
-    ? `${period.data.academic_year}, ${period.data.semester} Semester`
-    : '';
+  activeYear = period.data?.academic_year || null;
+  $('student-period').textContent = SCHOOL_YEAR_LABEL;
+
+  // Semester switching needs the extra view columns added by migration v7.
+  const semesterField = $('s-semester');
+  semesterField.closest('label').hidden = !caps.semesterViews;
+  semesterField.disabled = !caps.semesterViews;
 
   const withPlaceholder = (label, rows, labelKey) =>
     `<option value="">${label}</option>` +
@@ -1345,7 +2123,10 @@ async function showStudent() {
     const saved = JSON.parse(localStorage.getItem('scholarsched_student') || '{}');
     if (saved.program) $('s-program').value = saved.program;
     if (saved.year) $('s-year').value = saved.year;
-  } catch (_) { /* storage unavailable */ }
+    $('s-semester').value = saved.semester || period.data?.semester || '1st';
+  } catch (_) {
+    $('s-semester').value = period.data?.semester || '1st';
+  }
 
   loadStudentSchedule();
 }
@@ -1353,6 +2134,7 @@ async function showStudent() {
 async function loadStudentSchedule() {
   const program = $('s-program').value;
   const year = $('s-year').value;
+  const semester = $('s-semester').value;
   $('student-table-view').hidden = studentView !== 'table';
   $('student-weekly-view').hidden = studentView !== 'week';
   $('s-table-view').setAttribute('aria-pressed', String(studentView === 'table'));
@@ -1363,10 +2145,14 @@ async function loadStudentSchedule() {
   const empty = $('student-empty');
 
   try {
-    localStorage.setItem('scholarsched_student', JSON.stringify({ program, year }));
+    localStorage.setItem('scholarsched_student', JSON.stringify({ program, year, semester }));
   } catch (_) { /* storage unavailable */ }
 
   let query = sb.from('student_schedule').select('*');
+  if (caps.semesterViews) {
+    query = query.eq('academic_year', activeYear || SCHOOL_YEAR_LABEL);
+    if (semester) query = query.eq('semester', semester);
+  }
   if (term.length >= 2) {
     query = query.or(`subject_code.ilike.%${term}%,subject_name.ilike.%${term}%`);
   } else if (program && year) {
@@ -1417,9 +2203,11 @@ $('staff-weekly-toggle').addEventListener('click', () => { staffView = 'week'; $
 $('s-export-csv').addEventListener('click', () => downloadScheduleCsv(studentRows, 'student-schedule'));
 $('s-export-ics').addEventListener('click', () => downloadScheduleIcs(studentRows, 'student-schedule', 'student-export-alert'));
 $('s-export-pdf').addEventListener('click', () => downloadSchedulePdf(studentRows, 'Student schedule'));
+$('s-export-timetable').addEventListener('click', () => downloadTimetablePdf(studentRows, `Weekly timetable: ${$('s-semester').value} Semester ${SCHOOL_YEAR_LABEL}`));
 $('staff-export-csv').addEventListener('click', () => downloadScheduleCsv(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule'));
 $('staff-export-ics').addEventListener('click', () => downloadScheduleIcs(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule', 'staff-export-alert'));
 $('staff-export-pdf').addEventListener('click', () => downloadSchedulePdf(staffRows, currentUser?.role === 'admin' ? 'Active period schedules' : 'Teacher schedule'));
+$('staff-export-timetable').addEventListener('click', () => downloadTimetablePdf(staffRows, currentUser?.role === 'admin' ? 'Weekly timetable: all schedules' : 'Weekly timetable: my classes'));
 
 let searchTimer;
 $('s-search').addEventListener('input', () => {
@@ -1428,12 +2216,14 @@ $('s-search').addEventListener('input', () => {
 });
 $('s-program').addEventListener('change', loadStudentSchedule);
 $('s-year').addEventListener('change', loadStudentSchedule);
+$('s-semester').addEventListener('change', loadStudentSchedule);
 $('show-login-btn').addEventListener('click', showLogin);
 $('back-to-student').addEventListener('click', showStudent);
 
 /* ---------- start ---------- */
 
 (async function init() {
+  await detectCaps();
   const { data } = await sb.auth.getSession();
   if (data.session) {
     const profile = await loadProfile(data.session.user);

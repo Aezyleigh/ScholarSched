@@ -6,6 +6,7 @@
   <meta name="description" content="ScholarSched — class schedules for Unida Christian Colleges.">
   <meta name="theme-color" content="#073d27">
   <title>ScholarSched | Unida Christian Colleges</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
@@ -21,7 +22,7 @@
         <img src="img/logo.png" alt="Unida Christian Colleges crest">
         <div>
           <strong>ScholarSched</strong>
-          <span id="student-period" class="muted"></span>
+          <span id="student-period" class="muted">2025-2026</span>
         </div>
       </div>
       <button id="show-login-btn" type="button">Staff Login</button>
@@ -32,12 +33,18 @@
         <div class="grid">
           <label>Program <select id="s-program"></select></label>
           <label>Year Level <select id="s-year"></select></label>
+          <label>Semester
+            <select id="s-semester" data-no-combo>
+              <option value="1st">1st Semester</option>
+              <option value="2nd" selected>2nd Semester</option>
+            </select>
+          </label>
           <label>Or search any subject <input type="search" id="s-search" placeholder="Code or name, e.g. CS101"></label>
         </div>
         <div class="toolbar view-tools" role="group" aria-label="Choose how to view the schedule">
           <button type="button" id="s-table-view" aria-pressed="true">List</button>
           <button type="button" id="s-week-view" aria-pressed="false">Weekly Timetable</button>
-          <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="s-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="s-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="s-export-pdf">PDF (.pdf)</button><button type="button" id="s-print">Print</button></div></details>
+          <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="s-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Timetable</span><button type="button" id="s-export-timetable">Weekly timetable (.pdf)</button><span class="menu-group">Calendar</span><button type="button" id="s-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="s-export-pdf">PDF (.pdf)</button><button type="button" id="s-print">Print</button></div></details>
         </div>
         <div id="student-export-alert" class="alert" role="alert" hidden></div>
         <div id="student-table-view" class="table-wrap stack-table">
@@ -63,6 +70,24 @@
       <button type="submit" class="primary">Log In</button>
     </form>
     <div id="login-error" class="alert error" role="alert" hidden></div>
+    <p class="login-help"><button type="button" id="forgot-password-btn" class="link-button">Forgot Password?</button></p>
+
+    <form id="forgot-form" hidden>
+      <p class="muted">Enter the email for your account and we will send a password reset link.</p>
+      <label>Email <input type="email" id="forgot-email" required autocomplete="username"></label>
+      <button type="submit" class="primary">Send Reset Link</button>
+      <button type="button" id="forgot-back">Back to Login</button>
+    </form>
+    <div id="forgot-alert" class="alert" role="alert" hidden></div>
+
+    <form id="recovery-form" hidden>
+      <p class="muted">Choose a new password for your account.</p>
+      <label>New Password <input type="password" id="recovery-password" minlength="6" required autocomplete="new-password"></label>
+      <label>Confirm New Password <input type="password" id="recovery-confirm" minlength="6" required autocomplete="new-password"></label>
+      <button type="submit" class="primary">Save New Password</button>
+    </form>
+    <div id="recovery-alert" class="alert" role="alert" hidden></div>
+
     <button type="button" id="back-to-student">Back to student schedules</button>
   </main>
 
@@ -73,7 +98,7 @@
         <img src="img/logo.png" alt="Unida Christian Colleges crest">
         <div>
           <strong>ScholarSched</strong>
-          <span id="period-label" class="muted"></span>
+          <span id="period-label" class="muted">2025-2026</span>
         </div>
       </div>
       <div>
@@ -88,16 +113,25 @@
         <button type="button" role="tab" id="app-tab-schedules" aria-controls="tab-schedules" data-tab="schedules" aria-selected="true">Schedules</button>
         <button type="button" role="tab" id="app-tab-reports" aria-controls="tab-reports" data-tab="reports" aria-selected="false">Reports</button>
         <button type="button" role="tab" id="app-tab-curriculum" aria-controls="tab-curriculum" class="admin-only" data-tab="curriculum" aria-selected="false">Curriculum</button>
+        <button type="button" role="tab" id="app-tab-faculty" aria-controls="tab-faculty" class="admin-only" data-tab="faculty" aria-selected="false">Faculty</button>
         <button type="button" role="tab" id="app-tab-setup" aria-controls="tab-setup" class="admin-only" data-tab="setup" aria-selected="false">Rooms &amp; Periods</button>
+        <button type="button" role="tab" id="app-tab-settings" aria-controls="tab-settings" class="admin-only" data-tab="settings" aria-selected="false">Settings</button>
       </nav>
 
       <div id="tab-schedules" role="tabpanel" aria-labelledby="app-tab-schedules">
         <section id="create-panel" hidden>
           <h2 id="form-title">Create Schedule</h2>
           <form id="schedule-form" class="grid">
-            <label>Subject <select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
             <label>Program <select id="f-program" required></select></label>
             <label>Year Level <select id="f-year" required></select></label>
+            <label>Semester
+              <select id="f-semester" data-no-combo required>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+                <option value="Summer">Summer</option>
+              </select>
+            </label>
+            <label>Subject <select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
             <label>Teacher <select id="f-teacher" required></select></label>
             <label>Room <select id="f-room" required></select></label>
             <label>Day
@@ -112,6 +146,7 @@
             </label>
             <label>Start Time <input type="time" id="f-start" min="08:00" required></label>
             <label>End Time <input type="time" id="f-end" readonly required aria-describedby="duration-note"></label>
+            <p id="semester-note" class="muted field-note"></p>
             <p id="duration-note" class="muted field-note">Each class lasts 2 hours 30 minutes and the end time fills in automatically. Leave a 30 to 60 minute break between this program and year level's classes.</p>
             <div class="form-actions">
               <button type="submit" id="form-submit" class="primary">Check Conflicts and Save as Draft</button>
@@ -127,7 +162,7 @@
             <label>Search schedules <input type="search" id="search-input" placeholder="Subject, teacher, room, day..."></label>
             <button type="button" id="staff-list-toggle" aria-pressed="true">List</button>
             <button type="button" id="staff-weekly-toggle" aria-pressed="false">Weekly Timetable</button>
-            <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="staff-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="staff-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="staff-export-pdf">PDF (.pdf)</button><button type="button" id="staff-print">Print</button></div></details>
+            <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="staff-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Timetable</span><button type="button" id="staff-export-timetable">Weekly timetable (.pdf)</button><span class="menu-group">Calendar</span><button type="button" id="staff-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="staff-export-pdf">PDF (.pdf)</button><button type="button" id="staff-print">Print</button></div></details>
           </div>
           <div class="toolbar admin-only" id="bulk-tools" role="group" aria-label="Bulk actions">
             <button type="button" id="bulk-publish" class="primary">Publish Selected Drafts</button>
@@ -177,9 +212,77 @@
       </div>
 
       <div id="tab-curriculum" role="tabpanel" aria-labelledby="app-tab-curriculum" hidden>
-        <div class="subtabs" role="tablist" aria-label="Curriculum data" data-subtabs><button type="button" role="tab" data-sub="sub-courses">Courses</button><button type="button" role="tab" data-sub="sub-curriculum">Program curriculum</button><button type="button" role="tab" data-sub="sub-programs">Programs</button><button type="button" role="tab" data-sub="sub-teachers">Teachers</button></div>
-        <section id="sub-courses" role="tabpanel">
-          <h2>Course Catalog</h2>
+        <section>
+          <h2>Curriculum</h2>
+          <p class="muted">Choose a curriculum year, program and year level, then tick the courses it includes. Courses come from one shared catalog, so nothing is entered twice.</p>
+          <div class="toolbar">
+            <label>Curriculum Year <select id="cy-year" data-no-combo></select></label>
+            <label>Program <select id="cy-program" data-no-combo></select></label>
+            <label>Year Level
+              <select id="cy-level" data-no-combo>
+                <option value="">All Year Levels</option>
+              </select>
+            </label>
+            <label>Semester
+              <select id="cy-semester" data-no-combo>
+                <option value="">All Semesters</option>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+                <option value="Summer">Summer</option>
+              </select>
+            </label>
+          </div>
+          <div id="cy-alert" class="alert" role="alert" hidden></div>
+          <div class="curriculum-layout">
+            <div class="curriculum-main">
+              <h3>Courses in This Curriculum</h3>
+              <p id="cy-summary" class="muted"></p>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Course</th><th>Year Level</th><th>Semester</th><th>Curriculum Year</th><th>Action</th></tr></thead>
+                  <tbody id="cy-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <aside class="curriculum-side">
+              <h3>Add Courses</h3>
+              <p class="muted">Tick courses for the chosen program, year level and semester.</p>
+              <label>Find a course <input type="search" id="cy-search" placeholder="Code or name"></label>
+              <div id="cy-course-list" class="check-grid" role="group" aria-label="Catalog courses to add"></div>
+              <div class="form-actions">
+                <button type="button" id="cy-add" class="primary">Add Selected Courses</button>
+              </div>
+              <details class="panel">
+                <summary>Create a New Course</summary>
+                <form id="cy-quick-form" class="grid">
+                  <label>Course Code <input id="cy-code" required maxlength="30"></label>
+                  <label>Course Name <input id="cy-name" required maxlength="160"></label>
+                  <label>Units <input id="cy-units" type="number" min="1" max="32767" required></label>
+                  <div class="form-actions"><button type="submit" class="primary">Create and Add</button></div>
+                </form>
+              </details>
+            </aside>
+          </div>
+        </section>
+
+        <section id="cy-years-panel">
+          <h2>Curriculum Years</h2>
+          <p class="muted">Each version, for example 2022-2027, keeps its own course list. Select a version above to view or edit it.</p>
+          <form id="cy-year-form" class="toolbar">
+            <label>Valid Years <input id="cy-year-input" placeholder="2022-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
+            <button type="submit" id="cy-year-submit" class="primary">Add Curriculum Year</button>
+          </form>
+          <div id="cy-year-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Curriculum Year</th><th>Courses</th><th>Action</th></tr></thead>
+              <tbody id="cy-year-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <details class="panel">
+          <summary>Course Catalog</summary>
           <form id="course-form" class="grid">
             <input type="hidden" id="course-id">
             <label>Course Code <input id="course-code" required maxlength="30"></label>
@@ -196,31 +299,10 @@
               <tbody id="course-body"></tbody>
             </table>
           </div>
-        </section>
-        <section id="sub-curriculum" role="tabpanel">
-          <h2>Program Curriculum</h2>
-          <form id="curriculum-form" class="toolbar">
-            <input type="hidden" id="curriculum-id">
-            <label>Course <select id="curriculum-subject" required></select></label>
-            <label>Program <select id="curriculum-program" required></select></label>
-            <label>Year Level <select id="curriculum-year" required></select></label>
-            <label>Semester
-              <select id="curriculum-semester" required>
-                <option value="1st">1st</option><option value="2nd">2nd</option><option value="Summer">Summer</option>
-              </select>
-            </label>
-            <button type="submit" id="curriculum-submit" class="primary">Add to Curriculum</button>
-            <button type="button" id="curriculum-cancel" hidden>Cancel Edit</button>
-          </form>
-          <div id="curriculum-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap">
-            <table><thead><tr><th>Course</th><th>Program</th><th>Year</th><th>Semester</th><th>Action</th></tr></thead>
-              <tbody id="curriculum-body"></tbody>
-            </table>
-          </div>
-        </section>
-        <section id="sub-programs" role="tabpanel">
-          <h2>Programs</h2>
+        </details>
+
+        <details class="panel">
+          <summary>Programs</summary>
           <form id="program-form" class="toolbar">
             <input type="hidden" id="program-id">
             <label>Program Name <input id="program-name" required maxlength="160"></label>
@@ -229,37 +311,77 @@
           </form>
           <div id="program-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap"><table><thead><tr><th>Program</th><th>Actions</th></tr></thead><tbody id="program-body"></tbody></table></div>
-        </section>
-        <section id="sub-teachers" role="tabpanel">
-          <h2>Teachers</h2>
+        </details>
+      </div>
+
+      <div id="tab-faculty" role="tabpanel" aria-labelledby="app-tab-faculty" hidden>
+        <section>
+          <h2>Faculty</h2>
+          <p class="muted">Each teacher belongs to a department and has their own available days and times.</p>
           <form id="teacher-form" class="grid">
             <input type="hidden" id="teacher-id">
             <label>Name <input id="teacher-name" required maxlength="160"></label>
             <label>Email <input id="teacher-email" type="email"></label>
+            <label>Department <select id="teacher-dept" data-no-combo></select></label>
             <label>Maximum Weekly Load (hours) <input id="teacher-load" type="number" min="0.1" step="0.1" required></label>
+            <fieldset class="avail-fieldset">
+              <legend>Available Days and Times</legend>
+              <p class="muted">Tick each day the teacher can hold a class, then set the window for that day.</p>
+              <div id="teacher-avail" class="avail-grid"></div>
+            </fieldset>
             <div class="form-actions">
               <button type="submit" id="teacher-submit" class="primary">Add Teacher</button>
               <button type="button" id="teacher-cancel" hidden>Cancel Edit</button>
             </div>
           </form>
           <div id="teacher-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Max Weekly Load</th><th>Actions</th></tr></thead><tbody id="teacher-body"></tbody></table></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Name</th><th>Department</th><th>Email</th><th>Max Weekly Load</th><th>Availability</th><th>Actions</th></tr></thead>
+              <tbody id="teacher-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h2>Departments</h2>
+          <p class="muted">Departments group the faculty and can be added or edited here.</p>
+          <form id="dept-form" class="toolbar">
+            <input type="hidden" id="dept-id">
+            <label>Department Name <input id="dept-name" required maxlength="160"></label>
+            <button type="submit" id="dept-submit" class="primary">Add Department</button>
+            <button type="button" id="dept-cancel" hidden>Cancel Edit</button>
+          </form>
+          <div id="dept-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Department</th><th>Faculty</th><th>Actions</th></tr></thead><tbody id="dept-body"></tbody></table></div>
         </section>
       </div>
 
       <div id="tab-setup" role="tabpanel" aria-labelledby="app-tab-setup" hidden>
-        <div class="subtabs" role="tablist" aria-label="Rooms and periods" data-subtabs><button type="button" role="tab" data-sub="sub-rooms">Rooms</button><button type="button" role="tab" data-sub="sub-periods">Scheduling periods</button></div>
+        <div class="subtabs" role="tablist" aria-label="Rooms and periods" data-subtabs><button type="button" role="tab" data-sub="sub-rooms">Rooms</button><button type="button" role="tab" data-sub="sub-periods">Scheduling Periods</button></div>
         <section id="sub-rooms" role="tabpanel">
           <h2>Rooms</h2>
           <form id="room-form" class="toolbar">
             <input type="hidden" id="room-id">
             <label>Room Name <input id="room-name" required maxlength="120"></label>
+            <label>Room Type
+              <select id="room-type" data-no-combo>
+                <option value="Regular Room">Regular Room</option>
+                <option value="Computer Laboratory">Computer Laboratory</option>
+                <option value="Science Laboratory">Science Laboratory</option>
+                <option value="Speech Laboratory">Speech Laboratory</option>
+                <option value="Library">Library</option>
+                <option value="Auditorium">Auditorium</option>
+                <option value="Gymnasium">Gymnasium</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <label>Capacity <input id="room-capacity" type="number" min="1" max="10000" placeholder="e.g. 45"></label>
             <label class="check-label"><input type="checkbox" id="room-online"> Online Room</label>
             <button type="submit" id="room-submit" class="primary">Add Room</button>
             <button type="button" id="room-cancel" hidden>Cancel Edit</button>
           </form>
           <div id="room-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap"><table><thead><tr><th>Room</th><th>Type</th><th>Actions</th></tr></thead><tbody id="room-body"></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>Room</th><th>Type</th><th>Capacity</th><th>Mode</th><th>Actions</th></tr></thead><tbody id="room-body"></tbody></table></div>
         </section>
         <section id="sub-periods" role="tabpanel">
           <h2>Start a Scheduling Period</h2>
@@ -275,6 +397,40 @@
           <p class="muted">Copied schedules are revalidated and start as drafts. Set accurate dates here for calendar exports.</p>
           <div id="period-alert" class="alert" role="alert" hidden></div>
           <div class="table-wrap"><table><thead><tr><th>Academic Year</th><th>Semester</th><th>Date Range</th><th>Status</th><th>Actions</th></tr></thead><tbody id="period-body"></tbody></table></div>
+        </section>
+      </div>
+
+      <div id="tab-settings" role="tabpanel" aria-labelledby="app-tab-settings" hidden>
+        <div class="subtabs" role="tablist" aria-label="System settings" data-subtabs><button type="button" role="tab" data-sub="sub-users">User Management</button><button type="button" role="tab" data-sub="sub-backup">Backup &amp; Restore</button></div>
+        <section id="sub-users" role="tabpanel">
+          <h2>User Management</h2>
+          <p class="muted">Add a login for another Program Head or for a teacher. Share the password with them directly.</p>
+          <form id="user-form" class="grid">
+            <input type="hidden" id="user-id">
+            <label>Full Name <input id="user-name" required maxlength="160"></label>
+            <label>Email <input id="user-email" type="email" autocomplete="off" required></label>
+            <label>Password <input id="user-password" type="password" minlength="6" autocomplete="new-password" required><small class="muted">At least 6 characters.</small></label>
+            <label>Role <select id="user-role" data-no-combo><option value="teacher">Teacher</option><option value="admin">Program Head</option></select></label>
+            <label id="user-teacher-wrap">Linked Teacher <select id="user-teacher"></select><small class="muted">Links this login to a faculty record.</small></label>
+            <div class="form-actions">
+              <button type="submit" id="user-submit" class="primary">Add Account</button>
+              <button type="button" id="user-cancel" hidden>Cancel Edit</button>
+            </div>
+          </form>
+          <div id="user-alert" class="alert" role="alert" hidden></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Linked Teacher</th><th>Actions</th></tr></thead><tbody id="user-body"></tbody></table></div>
+        </section>
+        <section id="sub-backup" role="tabpanel" hidden>
+          <h2>Backup &amp; Restore</h2>
+          <p class="muted">Download every program, course, faculty, room, curriculum, period and schedule record as one JSON file. Restore reads the same file back.</p>
+          <div class="toolbar">
+            <button type="button" id="backup-download" class="primary">Download Backup</button>
+            <label>Restore File <input type="file" id="backup-file" accept="application/json,.json"></label>
+            <button type="button" id="backup-restore">Restore Backup</button>
+          </div>
+          <div id="backup-alert" class="alert" role="alert" hidden></div>
+          <div id="backup-summary"></div>
+          <p class="muted">Schedules are restored into the active scheduling period only; rows from other periods are reported and skipped. Existing records with the same id are updated.</p>
         </section>
       </div>
     </main>
