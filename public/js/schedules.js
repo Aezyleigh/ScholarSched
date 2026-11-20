@@ -22,7 +22,7 @@ let currentCurriculumYear = null;
 let currentUsers = [];
 let cyLimit = 12;           // courses shown in the Add Courses picker before "View more"
 let editingSubjectId = null; // course being edited inline in the curriculum list
-const SCHOOL_YEAR_LABEL = '2025-2026';   // shown under the ScholarSched title
+const SCHOOL_YEAR_LABEL = '2025-2026';   // fallback until the active period loads
 let activeYear = null;                    // academic year of the active period, used for data
 
 /* Optional v7 tables and columns. Detected once so the app still runs on an older database. */
@@ -328,7 +328,7 @@ async function loadPeriodLabel() {
   currentPeriod = data || null;
   currentSemester = data?.semester || null;
   activeYear = data?.academic_year || null;
-  $('period-label').textContent = SCHOOL_YEAR_LABEL;
+  $('period-label').textContent = activeYear || SCHOOL_YEAR_LABEL;
   if (data && editingId === null) $('f-semester').value = data.semester;
   updateSemesterNote();
 }
@@ -348,7 +348,8 @@ function updateSemesterNote() {
     note.textContent = `Schedules are saved to the active ${label} period (${currentPeriod.academic_year}).`;
     return;
   }
-  const target = lookups.periods.find((p) => p.semester === semester);
+  const target = lookups.periods.find((p) => p.semester === semester && p.academic_year === currentPeriod.academic_year)
+    || lookups.periods.find((p) => p.semester === semester);
   note.innerHTML = `Only the active period can receive schedules. You chose ${esc(label)}, but ${esc(currentSemester)} Semester is active.` +
     (target
       ? ` <button type="button" data-activate-semester="${esc(target.id)}">Switch to ${esc(label)}</button>`
@@ -377,6 +378,16 @@ function updateSubjectOptions() {
   const assigned = new Set(lookups.curriculum
     .filter((c) => String(c.program_id) === programId && String(c.year_level_id) === yearId && c.semester === semester)
     .map((c) => String(c.subject_id)));
+  // A course that already meets with this teacher in this room at this time stays
+  // selectable even when the chosen program's curriculum does not list it, because
+  // the scheduler is adding the other half of a combined class.
+  const slot = [$('f-teacher').value, $('f-room').value, $('f-day').value, $('f-start').value, $('f-end').value].join('|');
+  staffRows.forEach((row) => {
+    const rowSlot = [String(row.teacher_id), String(row.room_id), row.day,
+      String(row.start_time).slice(0, 5), String(row.end_time).slice(0, 5)].join('|');
+    if (rowSlot === slot) assigned.add(String(row.subject_id));
+  });
+  if (editingId !== null) assigned.add(String($('f-subject').value));
   const rows = lookups.subjects.filter((s) => assigned.has(String(s.id)));
   const select = $('f-subject');
   const previous = select.value;
@@ -1547,7 +1558,7 @@ function updateCombineNote() {
     : 'Courses in a combined class are edited one at a time; keep the same teacher, room and time to keep it combined.');
 }
 ['f-teacher', 'f-room', 'f-day', 'f-start'].forEach((id) => {
-  $(id).addEventListener('change', updateCombineNote);
+  $(id).addEventListener('change', () => { updateCombineNote(); updateSubjectOptions(); });
 });
 
 /* Paired classes meet on Monday + Wednesday or Tuesday + Thursday, at the same time. */
@@ -2346,12 +2357,10 @@ async function showStudent() {
 
   currentPeriod = period.data || null;
   activeYear = period.data?.academic_year || null;
-  $('student-period').textContent = SCHOOL_YEAR_LABEL;
+  $('student-period').textContent = activeYear || SCHOOL_YEAR_LABEL;
 
   // Semester switching needs the extra view columns added by migration v7.
-  const semesterField = $('s-semester');
-  semesterField.disabled = !caps.semesterViews;
-  $('s-semester-note').hidden = caps.semesterViews;
+  $('s-semester').disabled = !caps.semesterViews;
 
   const withPlaceholder = (label, rows, labelKey) =>
     `<option value="">${label}</option>` +
@@ -2448,7 +2457,7 @@ $('staff-weekly-toggle').addEventListener('click', () => { staffView = 'week'; $
 $('s-export-csv').addEventListener('click', () => downloadScheduleCsv(studentRows, 'student-schedule'));
 $('s-export-ics').addEventListener('click', () => downloadScheduleIcs(studentRows, 'student-schedule', 'student-export-alert'));
 $('s-export-pdf').addEventListener('click', () => downloadSchedulePdf(studentRows, 'Student schedule'));
-$('s-export-timetable').addEventListener('click', () => downloadTimetablePdf(studentRows, `Weekly timetable: ${$('s-semester').value} Semester ${SCHOOL_YEAR_LABEL}`));
+$('s-export-timetable').addEventListener('click', () => downloadTimetablePdf(studentRows, `Weekly timetable: ${$('s-semester').value} Semester ${activeYear || SCHOOL_YEAR_LABEL}`));
 $('staff-export-csv').addEventListener('click', () => downloadScheduleCsv(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule'));
 $('staff-export-ics').addEventListener('click', () => downloadScheduleIcs(staffRows, currentUser?.role === 'admin' ? 'active-period-schedules' : 'teacher-schedule', 'staff-export-alert'));
 $('staff-export-pdf').addEventListener('click', () => downloadSchedulePdf(staffRows, currentUser?.role === 'admin' ? 'Active period schedules' : 'Teacher schedule'));
