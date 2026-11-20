@@ -165,20 +165,52 @@
 .panel[open] > summary { margin-bottom: .85rem; }
 .panel form { margin-bottom: .25rem; }
 
-/* ---------- Curriculum workspace ---------- */
-.curriculum-layout {
+/* ---------- Curriculum workspace: numbered steps, read top to bottom ---------- */
+#cy-setup { margin-top: 1rem; }
+#cy-setup h3 { margin: 1.1rem 0 .4rem; }
+#cy-setup > div:first-of-type > h3 { margin-top: 0; }
+.curriculum-step {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line, #dde1d8);
+}
+.curriculum-step > h3 {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  margin: 0 0 .4rem;
+}
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--green-900, #073d27);
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 700;
+}
+.curriculum-step > .toolbar { margin-bottom: .25rem; }
+.curriculum-step .form-actions { margin-top: .6rem; }
+.cy-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  align-items: flex-end;
+}
+.cy-edit-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
-  gap: 1.25rem;
-  align-items: start;
+  flex: 1 1 24rem;
+  grid-template-columns: minmax(5rem, 8rem) minmax(11rem, 1fr) minmax(4rem, 6rem);
+  gap: .5rem;
+  min-width: 0;
 }
-.curriculum-main h3, .curriculum-side h3 { margin-top: 0; }
-.curriculum-side {
-  padding: 1rem;
-  background: var(--green-050, #f2f7f4);
-  border: 1px solid var(--line, #dde1d8);
-  border-radius: var(--radius, 10px);
-}
+.cy-edit-fields label { margin: 0; font-size: .82rem; }
+.cy-edit-fields input { width: 100%; min-width: 0; }
+.cy-edit-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.cy-edit-note { display: block; margin-top: .45rem; font-size: .78rem; color: var(--muted, #56645c); }
 .check-grid {
   display: grid;
   gap: .15rem .5rem;
@@ -204,8 +236,9 @@
 .check-grid label.is-added { color: var(--muted, #56645c); cursor: default; }
 .check-grid .check-meta { margin-left: auto; font-size: .8rem; color: var(--muted, #56645c); white-space: nowrap; }
 .check-grid label.is-added .check-meta { color: var(--ok-text, #11603a); font-weight: 600; }
-@media (max-width: 900px) {
-  .curriculum-layout { grid-template-columns: 1fr; }
+.check-grid--wide { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); max-height: 26rem; }
+@media (max-width: 700px) {
+  .cy-edit-fields { flex: 1 1 100%; grid-template-columns: 1fr; }
 }
 
 /* ---------- Faculty availability ---------- */

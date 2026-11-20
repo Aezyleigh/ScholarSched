@@ -20,9 +20,8 @@ let curriculumLoadError = null;
 let periodLoadError = null;
 let currentCurriculumYear = null;
 let currentUsers = [];
-let catalogLimit = 10;      // rows shown in the Course Catalog before "View more"
 let cyLimit = 12;           // courses shown in the Add Courses picker before "View more"
-let editingCourseId = null; // catalog course being edited, so its row can be highlighted
+let editingSubjectId = null; // course being edited inline in the curriculum list
 const SCHOOL_YEAR_LABEL = '2025-2026';   // shown under the ScholarSched title
 let activeYear = null;                    // academic year of the active period, used for data
 
@@ -47,6 +46,10 @@ function esc(value) {
   const div = document.createElement('div');
   div.textContent = value ?? '';
   return div.innerHTML;
+}
+
+function escAttr(value) {           // esc() leaves quotes alone, so escape them for input values
+  return esc(value).replace(/"/g, '&quot;');
 }
 
 function to12h(time) {               // "08:00:00" -> "8:00 AM"
@@ -605,17 +608,6 @@ function renderCurriculum() {
   const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
 
   const admin = isAdmin();
-  const catalogTerm = ($('course-search')?.value || '').trim().toLowerCase();
-  const catalogRows = subjects.filter((s) =>
-    !catalogTerm || `${s.subject_code} ${s.subject_name}`.toLowerCase().includes(catalogTerm));
-  const catalogPage = catalogRows.slice(0, catalogLimit);
-  $('course-body').innerHTML = catalogPage.map((s) => `
-    <tr class="${String(s.id) === String(editingCourseId) ? 'is-editing' : ''}"><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
-    <td>${admin ? `<button type="button" data-edit-course="${s.id}">Edit</button>
-    <button type="button" class="danger" data-remove-course="${s.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('')
-    || '<tr><td colspan="4" class="muted">No course matches that search.</td></tr>';
-  $('course-count').textContent = `${catalogPage.length} of ${catalogRows.length} courses`;
-  $('course-more').hidden = catalogPage.length >= catalogRows.length;
   $('program-body').innerHTML = lookups.programs.map((p) => `
     <tr><td>${esc(p.program_name)}</td><td>${admin ? `<button type="button" data-edit-program="${p.id}">Edit</button>
     <button type="button" class="danger" data-remove-program="${p.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
@@ -628,8 +620,10 @@ function renderCurriculum() {
   if (yearsPanel) yearsPanel.hidden = !caps.curriculumYears;
   if (caps.curriculumYears) {
     $('cy-year').innerHTML = '<option value="">All Curriculum Years</option>' +
-      versions.map((v) => `<option value="${esc(v)}">${esc(v)} Curriculum</option>`).join('');
+      versions.map((v) => `<option value="${escAttr(v)}">${esc(v)} Curriculum</option>`).join('');
     $('cy-year').value = currentCurriculumYear;
+    // With no version yet, setup is the only place to start, so open it for them.
+    if (!versions.length) $('cy-setup').open = true;
   }
   $('cy-year-body').innerHTML = versions.map((v) => {
     const count = lookups.curriculum.filter((c) => c.valid_years === v).length;
@@ -651,24 +645,61 @@ function renderCurriculum() {
         || String(a.semester).localeCompare(String(b.semester));
     });
 
+  const ready = Boolean(programId && levelId && semester);
+  // Columns that the filters already answer would only repeat themselves.
+  const colVisible = {
+    level: !levelId,
+    semester: !semester,
+    year: caps.curriculumYears && !currentCurriculumYear,
+  };
+  document.querySelectorAll('#cy-table thead [data-col]').forEach((th) => {
+    th.hidden = !colVisible[th.dataset.col];
+  });
+  const columnCount = 3 + ['level', 'semester', 'year'].filter((key) => colVisible[key]).length;
+
   $('cy-body').innerHTML = rows.map((c) => {
     const subject = subjectById.get(String(c.subject_id));
     const level = yearById.get(String(c.year_level_id));
+    const levelCell = colVisible.level ? `<td>${esc(level ? level.year_level : 'All Year Levels')}</td>` : '';
+    const semesterCell = colVisible.semester ? `<td>${esc(c.semester)}</td>` : '';
+    const yearCell = colVisible.year ? `<td>${esc(c.valid_years || '—')}</td>` : '';
+    if (admin && String(subject.id) === String(editingSubjectId)) {
+      return `<tr class="is-editing" data-edit-row="${subject.id}">
+        <td colspan="${columnCount}"><div class="cy-edit-form">
+          <div class="cy-edit-fields">
+            <label>Code <input class="cy-edit-code" value="${escAttr(subject.subject_code)}" maxlength="30"></label>
+            <label>Course name <input class="cy-edit-name" value="${escAttr(subject.subject_name)}" maxlength="160"></label>
+            <label>Units <input class="cy-edit-units" type="number" min="1" max="32767" value="${escAttr(subject.units)}"></label>
+          </div>
+          <div class="cy-edit-actions">
+            <button type="button" class="primary" data-save-subject="${subject.id}">Save</button>
+            <button type="button" data-cancel-edit>Cancel</button>
+            <button type="button" class="danger" data-delete-subject="${subject.id}">Delete</button>
+          </div></div>
+          <span class="cy-edit-note">Changes apply to this course everywhere it is used. Delete removes it from every curriculum.</span></td></tr>`;
+    }
     return `<tr><td>${esc(subject.subject_code)} — ${esc(subject.subject_name)}</td>
-      <td>${esc(level ? level.year_level : 'All Year Levels')}</td><td>${esc(c.semester)}</td>
-      <td>${esc(c.valid_years || '—')}</td>
-      <td>${admin ? `<button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`;
-  }).join('') || '<tr><td colspan="5" class="muted">No courses yet for this selection. Tick courses on the right to add them.</td></tr>';
+      <td>${esc(subject.units)}</td>${levelCell}${semesterCell}${yearCell}
+      <td>${admin ? `<button type="button" data-edit-subject="${subject.id}">Edit</button>
+      <button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`;
+  }).join('') || `<tr><td colspan="${columnCount}" class="muted">${ready
+    ? 'No courses yet for this selection. Add them in step 2.'
+    : 'Choose a program, year level and semester in step 1 to see its courses.'}</td></tr>`;
 
   const programName = programById.get(String(programId))?.program_name || 'All programs';
   const levelName = yearById.get(String(levelId))?.year_level || 'All year levels';
   const versionName = caps.curriculumYears ? (currentCurriculumYear ? `${currentCurriculumYear} Curriculum` : 'All curriculum years') : 'Curriculum';
-  $('cy-summary').textContent = `${rows.length} ${rows.length === 1 ? 'course' : 'courses'} in ${versionName} for ${programName}, ${levelName}${semester ? `, ${semester} Semester` : ''}.`;
+  $('cy-summary').textContent = ready
+    ? `${rows.length} ${rows.length === 1 ? 'course' : 'courses'} in ${versionName} for ${programName}, ${levelName}, ${semester} Semester.`
+    : 'Choose a program, year level and semester to add or edit courses.';
 
-  const canAdd = Boolean(programId && levelId && semester) && (!caps.curriculumYears || Boolean(currentCurriculumYear));
+  const canAdd = ready && (!caps.curriculumYears || Boolean(currentCurriculumYear));
+  $('cy-add').textContent = 'Add Selected Courses';
   if (!canAdd) {
-    $('cy-course-list').innerHTML = `<p class="muted">${!programId || !levelId || !semester
-      ? 'Choose a program, year level and semester to add courses.'
+    $('cy-count').textContent = '';
+    $('cy-more').hidden = true;
+    $('cy-course-list').innerHTML = `<p class="muted">${!ready
+      ? 'Choose a program, year level and semester in step 1 first.'
       : 'Choose a specific curriculum year to add courses.'}</p>`;
     return;
   }
@@ -687,74 +718,6 @@ function renderCurriculum() {
       <span class="check-meta">${isAdded ? 'Added' : `${esc(s.units)} units`}</span></label>`;
   }).join('') || '<p class="muted">No course matches that search.</p>';
 }
-
-$('course-body').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-edit-course]');
-  if (!btn) return;
-  const s = lookups.subjects.find((row) => String(row.id) === btn.dataset.editCourse);
-  if (!s) return;
-  $('course-id').value = s.id;
-  $('course-code').value = s.subject_code;
-  $('course-name').value = s.subject_name;
-  $('course-units').value = s.units;
-  $('course-submit').textContent = 'Save Course';
-  $('course-cancel').hidden = false;
-  // Bring the edit form to the user instead of making them scroll back up.
-  editingCourseId = String(s.id);
-  renderCurriculum();
-  $('course-form').closest('details').open = true;
-  $('course-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  $('course-code').focus({ preventScroll: true });
-});
-
-$('course-body').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-remove-course]');
-  if (!btn) return;
-  const course = lookups.subjects.find((row) => String(row.id) === btn.dataset.removeCourse);
-  if (!course || !confirm(`Remove ${course.subject_code} — ${course.subject_name}? This cannot be undone.`)) return;
-  const { data, error } = await sb.from('subjects').delete().eq('id', Number(course.id)).select('id');
-  if (error) {
-    const message = error.code === '23503'
-      ? 'Could not remove this course because it is used by a schedule or curriculum entry. Remove those references first.'
-      : 'Could not remove the course. Check your permissions and try again.';
-    return showCurriculumAlert('course-alert', 'error', message);
-  }
-  if (!data?.length) return showCurriculumAlert('course-alert', 'error', 'Course was not removed. It may no longer exist or you may not have permission.');
-  if ($('course-id').value === String(course.id)) $('course-cancel').click();
-  showCurriculumAlert('course-alert', 'ok', 'Course removed.');
-  await loadLookups();
-});
-
-$('course-cancel').addEventListener('click', () => {
-  $('course-form').reset();
-  $('course-id').value = '';
-  $('course-submit').textContent = 'Add Course';
-  $('course-cancel').hidden = true;
-  $('course-alert').hidden = true;
-  editingCourseId = null;
-  renderCurriculum();
-});
-
-$('course-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const id = $('course-id').value;
-  const values = {
-    subject_code: $('course-code').value.trim(),
-    subject_name: $('course-name').value.trim(),
-    units: Number($('course-units').value),
-  };
-  const { error } = id
-    ? await sb.from('subjects').update(values).eq('id', Number(id))
-    : await sb.from('subjects').insert(values);
-  if (error) return showCurriculumAlert('course-alert', 'error', 'Could not save the course. Check that its code is unique.');
-  editingCourseId = null;
-  $('course-form').reset();
-  $('course-id').value = '';
-  $('course-submit').textContent = 'Add Course';
-  $('course-cancel').hidden = true;
-  showCurriculumAlert('course-alert', 'ok', id ? 'Course updated.' : 'Course added.');
-  await loadLookups();
-});
 
 $('program-body').addEventListener('click', async (e) => {
   const edit = e.target.closest('[data-edit-program]');
@@ -1016,8 +979,10 @@ $('cy-level').addEventListener('change', renderCurriculum);
 $('cy-semester').addEventListener('change', renderCurriculum);
 $('cy-search').addEventListener('input', () => { cyLimit = 12; renderCurriculum(); });
 $('cy-more').addEventListener('click', () => { cyLimit += 12; renderCurriculum(); });
-$('course-search').addEventListener('input', () => { catalogLimit = 10; renderCurriculum(); });
-$('course-more').addEventListener('click', () => { catalogLimit += 10; renderCurriculum(); });
+$('cy-course-list').addEventListener('change', () => {
+  const chosen = document.querySelectorAll('[data-cy-course]:checked:not(:disabled)').length;
+  $('cy-add').textContent = chosen ? `Add ${chosen} ${chosen === 1 ? 'course' : 'courses'}` : 'Add Selected Courses';
+});
 $('cy-year').addEventListener('change', () => {
   currentCurriculumYear = $('cy-year').value;
   renderCurriculum();
@@ -1124,11 +1089,70 @@ $('cy-year-body').addEventListener('click', async (e) => {
 });
 
 $('cy-body').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-remove-curriculum]');
-  if (!btn || !confirm('Remove this course from the curriculum?')) return;
-  const { error } = await sb.from('curriculum_courses').delete().eq('id', Number(btn.dataset.removeCurriculum));
+  const edit = e.target.closest('button[data-edit-subject]');
+  if (edit) {
+    editingSubjectId = String(edit.dataset.editSubject);
+    renderCurriculum();
+    // The row turns into inputs in place, so there is nothing to scroll to.
+    document.querySelector('.cy-edit-code')?.focus({ preventScroll: true });
+    return;
+  }
+
+  if (e.target.closest('[data-cancel-edit]')) {
+    editingSubjectId = null;
+    renderCurriculum();
+    return;
+  }
+
+  const save = e.target.closest('button[data-save-subject]');
+  if (save) {
+    const row = save.closest('tr');
+    const values = {
+      subject_code: row.querySelector('.cy-edit-code').value.trim().toUpperCase(),
+      subject_name: row.querySelector('.cy-edit-name').value.trim(),
+      units: Number(row.querySelector('.cy-edit-units').value),
+    };
+    if (!values.subject_code || !values.subject_name || !values.units) {
+      return showCurriculumAlert('cy-alert', 'error', 'A course needs a code, a name and at least one unit.');
+    }
+    save.disabled = true;
+    const { error } = await sb.from('subjects').update(values).eq('id', Number(save.dataset.saveSubject));
+    save.disabled = false;
+    if (error) {
+      return showCurriculumAlert('cy-alert', 'error', error.code === '23505'
+        ? 'Another course already uses that code.'
+        : 'Could not save the course. Check the code, name and units.');
+    }
+    editingSubjectId = null;
+    showCurriculumAlert('cy-alert', 'ok', `${values.subject_code} updated.`);
+    await loadLookups();
+    return;
+  }
+
+  const del = e.target.closest('button[data-delete-subject]');
+  if (del) {
+    const course = lookups.subjects.find((row) => String(row.id) === del.dataset.deleteSubject);
+    if (!course) return;
+    if (!confirm(`Delete ${course.subject_code} — ${course.subject_name}? This removes the course from every curriculum that uses it and cannot be undone.`)) return;
+    const { data, error } = await sb.from('subjects').delete().eq('id', Number(course.id)).select('id');
+    if (error) {
+      return showCurriculumAlert('cy-alert', 'error', error.code === '23503'
+        ? 'This course is still used by a schedule or curriculum entry. Remove those first.'
+        : 'Could not delete the course. Check your permissions and try again.');
+    }
+    if (!data?.length) return showCurriculumAlert('cy-alert', 'error', 'Course was not deleted. It may no longer exist or you may not have permission.');
+    editingSubjectId = null;
+    showCurriculumAlert('cy-alert', 'ok', `${course.subject_code} deleted.`);
+    await loadLookups();
+    return;
+  }
+
+  const remove = e.target.closest('button[data-remove-curriculum]');
+  if (!remove) return;
+  if (!confirm('Remove this course from the curriculum? The course itself stays in the list.')) return;
+  const { error } = await sb.from('curriculum_courses').delete().eq('id', Number(remove.dataset.removeCurriculum));
   if (error) return showCurriculumAlert('cy-alert', 'error', 'Could not remove this curriculum entry.');
-  showCurriculumAlert('cy-alert', 'ok', 'Curriculum entry removed.');
+  showCurriculumAlert('cy-alert', 'ok', 'Course removed from this curriculum.');
   await loadLookups();
 });
 /* ---------- schedule table (staff) ---------- */

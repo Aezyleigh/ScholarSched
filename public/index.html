@@ -215,111 +215,94 @@
       <div id="tab-curriculum" role="tabpanel" aria-labelledby="app-tab-curriculum" hidden>
         <section>
           <h2>Curriculum</h2>
-          <p class="muted">Choose a curriculum year, program and year level, then tick the courses it includes. Courses come from one shared catalog, so nothing is entered twice.</p>
-          <div class="toolbar">
-            <label>Curriculum Year <select id="cy-year" data-no-combo></select></label>
-            <label>Program <select id="cy-program" data-no-combo></select></label>
-            <label>Year Level
-              <select id="cy-level" data-no-combo>
-                <option value="">All Year Levels</option>
-              </select>
-            </label>
-            <label>Semester
-              <select id="cy-semester" data-no-combo>
-                <option value="">All Semesters</option>
-                <option value="1st">1st Semester</option>
-                <option value="2nd">2nd Semester</option>
-                <option value="Summer">Summer</option>
-              </select>
-            </label>
-          </div>
-          <div id="cy-alert" class="alert" role="alert" hidden></div>
-          <div class="curriculum-layout">
-            <div class="curriculum-main">
-              <h3>Courses in This Curriculum</h3>
-              <p id="cy-summary" class="muted"></p>
+          <p class="muted">A curriculum is the course list for one program, year level and semester. Work down the page: choose the curriculum, add its courses, then edit any course right where it appears in the list.</p>
+
+          <details class="panel" id="cy-setup">
+            <summary>Setup: curriculum years and programs</summary>
+            <div id="cy-years-panel">
+              <h3>Curriculum Years</h3>
+              <p class="muted">Each version, for example 2022-2027, keeps its own course list. Do this first if the list is empty.</p>
+              <form id="cy-year-form" class="toolbar editor-only">
+                <label>Valid Years <input id="cy-year-input" placeholder="2022-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
+                <button type="submit" id="cy-year-submit" class="primary">Add Curriculum Year</button>
+              </form>
+              <div id="cy-year-alert" class="alert" role="alert" hidden></div>
               <div class="table-wrap">
                 <table>
-                  <thead><tr><th>Course</th><th>Year Level</th><th>Semester</th><th>Curriculum Year</th><th>Action</th></tr></thead>
-                  <tbody id="cy-body"></tbody>
+                  <thead><tr><th>Curriculum Year</th><th>Courses</th><th>Action</th></tr></thead>
+                  <tbody id="cy-year-body"></tbody>
                 </table>
               </div>
             </div>
-            <aside class="curriculum-side editor-only">
-              <h3>Add Courses</h3>
-              <p class="muted">Tick courses for the chosen program, year level and semester.</p>
-              <label>Find a course <input type="search" id="cy-search" placeholder="Code or name"></label>
-              <p id="cy-count" class="muted list-count"></p>
-              <div id="cy-course-list" class="check-grid" role="group" aria-label="Catalog courses to add"></div>
-              <button type="button" id="cy-more" class="more-button" hidden>View more courses</button>
-              <div class="form-actions">
-                <button type="button" id="cy-add" class="primary">Add Selected Courses</button>
-              </div>
-              <details class="panel">
-                <summary>Create a New Course</summary>
-                <form id="cy-quick-form" class="grid">
-                  <label>Course Code <input id="cy-code" required maxlength="30"></label>
-                  <label>Course Name <input id="cy-name" required maxlength="160"></label>
-                  <label>Units <input id="cy-units" type="number" min="1" max="32767" required></label>
-                  <div class="form-actions"><button type="submit" class="primary">Create and Add</button></div>
-                </form>
-              </details>
-            </aside>
-          </div>
-        </section>
-
-        <section id="cy-years-panel">
-          <h2>Curriculum Years</h2>
-          <p class="muted">Each version, for example 2022-2027, keeps its own course list. Select a version above to view or edit it.</p>
-          <form id="cy-year-form" class="toolbar editor-only">
-            <label>Valid Years <input id="cy-year-input" placeholder="2022-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
-            <button type="submit" id="cy-year-submit" class="primary">Add Curriculum Year</button>
-          </form>
-          <div id="cy-year-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Curriculum Year</th><th>Courses</th><th>Action</th></tr></thead>
-              <tbody id="cy-year-body"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <details class="panel">
-          <summary>Course Catalog</summary>
-          <form id="course-form" class="grid editor-only">
-            <input type="hidden" id="course-id">
-            <label>Course Code <input id="course-code" required maxlength="30"></label>
-            <label>Course Name <input id="course-name" required maxlength="160"></label>
-            <label>Units <input id="course-units" type="number" min="1" max="32767" required></label>
-            <div class="form-actions">
-              <button type="submit" id="course-submit" class="primary">Add Course</button>
-              <button type="button" id="course-cancel" hidden>Cancel Edit</button>
+            <div id="cy-programs-panel">
+              <h3>Programs</h3>
+              <form id="program-form" class="toolbar editor-only">
+                <input type="hidden" id="program-id">
+                <label>Program Name <input id="program-name" required maxlength="160"></label>
+                <button type="submit" id="program-submit" class="primary">Add Program</button>
+                <button type="button" id="program-cancel" hidden>Cancel Edit</button>
+              </form>
+              <div id="program-alert" class="alert" role="alert" hidden></div>
+              <div class="table-wrap"><table><thead><tr><th>Program</th><th>Actions</th></tr></thead><tbody id="program-body"></tbody></table></div>
             </div>
-          </form>
-          <div id="course-alert" class="alert" role="alert" hidden></div>
-          <div class="toolbar">
-            <label>Search courses <input type="search" id="course-search" placeholder="Code or name"></label>
-            <span id="course-count" class="muted list-count"></span>
-          </div>
-          <div class="table-wrap">
-            <table><thead><tr><th>Code</th><th>Course</th><th>Units</th><th>Actions</th></tr></thead>
-              <tbody id="course-body"></tbody>
-            </table>
-          </div>
-          <button type="button" id="course-more" class="more-button" hidden>View more courses</button>
-        </details>
+          </details>
 
-        <details class="panel">
-          <summary>Programs</summary>
-          <form id="program-form" class="toolbar editor-only">
-            <input type="hidden" id="program-id">
-            <label>Program Name <input id="program-name" required maxlength="160"></label>
-            <button type="submit" id="program-submit" class="primary">Add Program</button>
-            <button type="button" id="program-cancel" hidden>Cancel Edit</button>
-          </form>
-          <div id="program-alert" class="alert" role="alert" hidden></div>
-          <div class="table-wrap"><table><thead><tr><th>Program</th><th>Actions</th></tr></thead><tbody id="program-body"></tbody></table></div>
-        </details>
+          <div class="curriculum-step">
+            <h3><span class="step-badge" aria-hidden="true">1</span> Choose a curriculum</h3>
+            <div class="toolbar">
+              <label>Curriculum Year <select id="cy-year" data-no-combo></select></label>
+              <label>Program <select id="cy-program" data-no-combo></select></label>
+              <label>Year Level
+                <select id="cy-level" data-no-combo>
+                  <option value="">All Year Levels</option>
+                </select>
+              </label>
+              <label>Semester
+                <select id="cy-semester" data-no-combo>
+                  <option value="">All Semesters</option>
+                  <option value="1st">1st Semester</option>
+                  <option value="2nd">2nd Semester</option>
+                  <option value="Summer">Summer</option>
+                </select>
+              </label>
+            </div>
+            <p id="cy-summary" class="muted"></p>
+            <div id="cy-alert" class="alert" role="alert" hidden></div>
+          </div>
+
+          <div class="curriculum-step editor-only">
+            <h3><span class="step-badge" aria-hidden="true">2</span> Add courses</h3>
+            <p class="muted">Search the shared course list, tick what this curriculum needs, then add them together.</p>
+            <div class="toolbar">
+              <label>Find a course <input type="search" id="cy-search" placeholder="Code or name"></label>
+              <span id="cy-count" class="muted list-count"></span>
+            </div>
+            <div id="cy-course-list" class="check-grid check-grid--wide" role="group" aria-label="Courses to add"></div>
+            <button type="button" id="cy-more" class="more-button" hidden>View more courses</button>
+            <div class="form-actions">
+              <button type="button" id="cy-add" class="primary">Add Selected Courses</button>
+            </div>
+            <details class="panel">
+              <summary>Create a new course</summary>
+              <form id="cy-quick-form" class="grid">
+                <label>Course Code <input id="cy-code" required maxlength="30"></label>
+                <label>Course Name <input id="cy-name" required maxlength="160"></label>
+                <label>Units <input id="cy-units" type="number" min="1" max="32767" required></label>
+                <div class="form-actions"><button type="submit" class="primary">Create and Add</button></div>
+              </form>
+            </details>
+          </div>
+
+          <div class="curriculum-step">
+            <h3><span class="step-badge" aria-hidden="true">3</span> Courses in this curriculum</h3>
+            <div class="table-wrap">
+              <table id="cy-table">
+                <thead><tr><th>Course</th><th>Units</th><th data-col="level">Year Level</th><th data-col="semester">Semester</th><th data-col="year">Curriculum Year</th><th>Actions</th></tr></thead>
+                <tbody id="cy-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div id="tab-faculty" role="tabpanel" aria-labelledby="app-tab-faculty" hidden>

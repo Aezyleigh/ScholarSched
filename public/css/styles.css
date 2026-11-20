@@ -158,7 +158,7 @@ label small { font-weight: 400; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 1rem; }
 .form-actions { grid-column: 1 / -1; display: flex; gap: .5rem; flex-wrap: wrap; }
 .field-note { grid-column: 1 / -1; margin: -.25rem 0 .75rem; font-size: .88rem; }
-#course-form { margin-bottom: .75rem; }
+#cy-quick-form { margin-bottom: .75rem; }
 
 /* ---------- Controls ---------- */
 input, select, button, textarea { font: inherit; }

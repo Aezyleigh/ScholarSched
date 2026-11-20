@@ -27,10 +27,12 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
   that would go over the limit.
 - **Partner days.** Monday/Wednesday and Tuesday/Thursday can be scheduled together at
   the same time; Friday and Saturday remain individual choices.
-- **Curriculum management.** The Program Head can edit course details and each
-  program/year/semester course assignment. The catalog and the Add Courses picker both have
-  a search and a View more button, and Edit brings the course form into view. Schedule
-  courses come from the active curriculum.
+- **Curriculum management.** The Curriculum tab reads top to bottom in three steps: choose
+  the curriculum (curriculum year, program, year level, semester), add courses from a
+  searchable list with a View more button, then review the list. Each row has Edit, which
+  turns that row into inputs for the course code, name and units, plus Remove from this
+  curriculum. Curriculum years and programs sit in a collapsible setup panel at the top.
+  Schedule courses come from the active curriculum.
 - **Faculty reports.** Individual availability and a summary of all faculty, class counts,
   weekly load, and availability are available in Reports. Reports can be downloaded as CSV/PDF
   or exported as a calendar file.

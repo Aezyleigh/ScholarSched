@@ -60,10 +60,11 @@ Closing the active period means students and teachers will not see schedules unt
 ### 3. Set up courses, programs, teachers, and curriculum
 
 1. Open **Curriculum**.
-2. In **Course catalog**, add or edit the course code, name, units, and prerequisite. Remove a course only if it is no longer used by a schedule or curriculum entry.
-3. In **Program curriculum**, choose a course, program, year level, and semester, then choose **Add to curriculum**. Use the table actions to edit or remove an assignment.
-4. In **Programs**, add or edit program names. Remove a program only if it is no longer referenced by schedules or curriculum.
-5. In **Teachers**, add or edit the teacher name, optional email, and maximum weekly load. Remove a teacher only after reassigning their schedules.
+2. Open **Setup: curriculum years and programs** when starting fresh. Add a curriculum year such as 2022-2027, and add the programs you offer. Each curriculum year keeps its own course list, so add the newest one first.
+3. **Step 1, choose a curriculum:** pick the curriculum year, program, year level, and semester. Steps 2 and 3 then show only that combination.
+4. **Step 2, add courses:** search the shared course list, tick the courses this curriculum needs, then choose **Add selected courses**. If a course does not exist yet, open **Create a new course** to add it and assign it in one step.
+5. **Step 3, courses in this curriculum:** choose **Edit** on a row to change that course's code, name, or units right in the list, **Remove** to take it out of this curriculum only, or **Delete** to remove the course everywhere. Edits apply to the course in every curriculum that uses it.
+6. In **Faculty**, add or edit the teacher name, optional email, and maximum weekly load. Remove a teacher only after reassigning their schedules.
 
 The schedule form only offers courses assigned to the selected program and year level for the active semester. Year levels and teacher availability windows are currently managed by the system administrator in Supabase.
 
