@@ -19,11 +19,18 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
   publishes them, can unpublish them, and can delete drafts.
 - **Student view without login.** Students choose their Program and Year Level and see only
   published schedules.
-- **Teacher view.** Teachers log in and see their own published teaching schedule.
+- **Teacher view.** Teachers log in and see their own published teaching schedule, and can
+  open the Curriculum, Faculty and Rooms & Periods tabs read-only. Only the Program Head
+  sees the add/edit/remove controls; the database policies enforce the same rule.
+- **Weekly load check.** The create form shows the selected teacher's current load against
+  their maximum weekly load as soon as the teacher and days are chosen, and blocks a save
+  that would go over the limit.
 - **Partner days.** Monday/Wednesday and Tuesday/Thursday can be scheduled together at
   the same time; Friday and Saturday remain individual choices.
 - **Curriculum management.** The Program Head can edit course details and each
-  program/year/semester course assignment. Schedule courses come from the active curriculum.
+  program/year/semester course assignment. The catalog and the Add Courses picker both have
+  a search and a View more button, and Edit brings the course form into view. Schedule
+  courses come from the active curriculum.
 - **Faculty reports.** Individual availability and a summary of all faculty, class counts,
   weekly load, and availability are available in Reports. Reports can be downloaded as CSV/PDF
   or exported as a calendar file.
@@ -39,7 +46,7 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
 | Role | Account | Can do |
 | --- | --- | --- |
 | Program Head | Yes | Manage catalogs, rooms, periods, and schedules; publish/unpublish schedules |
-| Teacher | Yes | View own published schedule |
+| Teacher | Yes | View own published schedule, reports, curriculum, faculty and rooms/periods (read-only) |
 | Student | No | View published schedule for a Program + Year Level |
 
 ## Tech stack
@@ -77,12 +84,13 @@ ScholarSched/
     ├── migration_v5.sql Full-break-spanning class validation
     ├── migration_v6.sql Shared meetings across programs
     ├── migration_v7.sql Departments, room details, curriculum years, semester views, backup helper
+    ├── migration_v8.sql Read-only teacher access and richer teacher schedule rows
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, and v7 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, and v8 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
@@ -90,6 +98,10 @@ browser bundle from jsDelivr.
 Migration v7 adds faculty departments, room capacity and type, curriculum versions such as
 2022-2027, semester columns on the public schedule views, and a helper that resets id sequences after
 a restore. Until it is run, the app hides those controls and keeps working with the older tables.
+
+Migration v8 lets teachers read courses, faculty, availability, rooms, departments and curriculum
+while keeping every write Program Head only. It also adds program, year, teacher and room ids to
+the teacher schedule view so the read-only report screens work.
 
 ## Security notes
 

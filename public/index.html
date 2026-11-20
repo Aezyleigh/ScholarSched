@@ -39,6 +39,7 @@
               <option value="2nd" selected>2nd Semester</option>
             </select>
           </label>
+          <p id="s-semester-note" class="muted field-note" hidden>Semester switching needs the v7 database migration. Only the active semester is shown until then.</p>
           <label>Or search any subject <input type="search" id="s-search" placeholder="Code or name, e.g. CS101"></label>
         </div>
         <div class="toolbar view-tools" role="group" aria-label="Choose how to view the schedule">
@@ -112,9 +113,9 @@
       <nav id="app-tabs" class="tabs" role="tablist" aria-label="Sections" hidden>
         <button type="button" role="tab" id="app-tab-schedules" aria-controls="tab-schedules" data-tab="schedules" aria-selected="true">Schedules</button>
         <button type="button" role="tab" id="app-tab-reports" aria-controls="tab-reports" data-tab="reports" aria-selected="false">Reports</button>
-        <button type="button" role="tab" id="app-tab-curriculum" aria-controls="tab-curriculum" class="admin-only" data-tab="curriculum" aria-selected="false">Curriculum</button>
-        <button type="button" role="tab" id="app-tab-faculty" aria-controls="tab-faculty" class="admin-only" data-tab="faculty" aria-selected="false">Faculty</button>
-        <button type="button" role="tab" id="app-tab-setup" aria-controls="tab-setup" class="admin-only" data-tab="setup" aria-selected="false">Rooms &amp; Periods</button>
+        <button type="button" role="tab" id="app-tab-curriculum" aria-controls="tab-curriculum" data-tab="curriculum" aria-selected="false">Curriculum</button>
+        <button type="button" role="tab" id="app-tab-faculty" aria-controls="tab-faculty" data-tab="faculty" aria-selected="false">Faculty</button>
+        <button type="button" role="tab" id="app-tab-setup" aria-controls="tab-setup" data-tab="setup" aria-selected="false">Rooms &amp; Periods</button>
         <button type="button" role="tab" id="app-tab-settings" aria-controls="tab-settings" class="admin-only" data-tab="settings" aria-selected="false">Settings</button>
       </nav>
 
@@ -132,7 +133,7 @@
               </select>
             </label>
             <label>Subject <select id="f-subject" required></select><small id="subject-note" class="muted"></small></label>
-            <label>Teacher <select id="f-teacher" required></select></label>
+            <label>Teacher <select id="f-teacher" required></select><small id="load-note" class="muted"></small></label>
             <label>Room <select id="f-room" required></select></label>
             <label>Day
               <select id="f-day" data-no-combo required>
@@ -244,11 +245,13 @@
                 </table>
               </div>
             </div>
-            <aside class="curriculum-side">
+            <aside class="curriculum-side editor-only">
               <h3>Add Courses</h3>
               <p class="muted">Tick courses for the chosen program, year level and semester.</p>
               <label>Find a course <input type="search" id="cy-search" placeholder="Code or name"></label>
+              <p id="cy-count" class="muted list-count"></p>
               <div id="cy-course-list" class="check-grid" role="group" aria-label="Catalog courses to add"></div>
+              <button type="button" id="cy-more" class="more-button" hidden>View more courses</button>
               <div class="form-actions">
                 <button type="button" id="cy-add" class="primary">Add Selected Courses</button>
               </div>
@@ -268,7 +271,7 @@
         <section id="cy-years-panel">
           <h2>Curriculum Years</h2>
           <p class="muted">Each version, for example 2022-2027, keeps its own course list. Select a version above to view or edit it.</p>
-          <form id="cy-year-form" class="toolbar">
+          <form id="cy-year-form" class="toolbar editor-only">
             <label>Valid Years <input id="cy-year-input" placeholder="2022-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
             <button type="submit" id="cy-year-submit" class="primary">Add Curriculum Year</button>
           </form>
@@ -283,7 +286,7 @@
 
         <details class="panel">
           <summary>Course Catalog</summary>
-          <form id="course-form" class="grid">
+          <form id="course-form" class="grid editor-only">
             <input type="hidden" id="course-id">
             <label>Course Code <input id="course-code" required maxlength="30"></label>
             <label>Course Name <input id="course-name" required maxlength="160"></label>
@@ -294,16 +297,21 @@
             </div>
           </form>
           <div id="course-alert" class="alert" role="alert" hidden></div>
+          <div class="toolbar">
+            <label>Search courses <input type="search" id="course-search" placeholder="Code or name"></label>
+            <span id="course-count" class="muted list-count"></span>
+          </div>
           <div class="table-wrap">
             <table><thead><tr><th>Code</th><th>Course</th><th>Units</th><th>Actions</th></tr></thead>
               <tbody id="course-body"></tbody>
             </table>
           </div>
+          <button type="button" id="course-more" class="more-button" hidden>View more courses</button>
         </details>
 
         <details class="panel">
           <summary>Programs</summary>
-          <form id="program-form" class="toolbar">
+          <form id="program-form" class="toolbar editor-only">
             <input type="hidden" id="program-id">
             <label>Program Name <input id="program-name" required maxlength="160"></label>
             <button type="submit" id="program-submit" class="primary">Add Program</button>
@@ -318,7 +326,7 @@
         <section>
           <h2>Faculty</h2>
           <p class="muted">Each teacher belongs to a department and has their own available days and times.</p>
-          <form id="teacher-form" class="grid">
+          <form id="teacher-form" class="grid editor-only">
             <input type="hidden" id="teacher-id">
             <label>Name <input id="teacher-name" required maxlength="160"></label>
             <label>Email <input id="teacher-email" type="email"></label>
@@ -345,7 +353,7 @@
         <section>
           <h2>Departments</h2>
           <p class="muted">Departments group the faculty and can be added or edited here.</p>
-          <form id="dept-form" class="toolbar">
+          <form id="dept-form" class="toolbar editor-only">
             <input type="hidden" id="dept-id">
             <label>Department Name <input id="dept-name" required maxlength="160"></label>
             <button type="submit" id="dept-submit" class="primary">Add Department</button>
@@ -360,7 +368,7 @@
         <div class="subtabs" role="tablist" aria-label="Rooms and periods" data-subtabs><button type="button" role="tab" data-sub="sub-rooms">Rooms</button><button type="button" role="tab" data-sub="sub-periods">Scheduling Periods</button></div>
         <section id="sub-rooms" role="tabpanel">
           <h2>Rooms</h2>
-          <form id="room-form" class="toolbar">
+          <form id="room-form" class="toolbar editor-only">
             <input type="hidden" id="room-id">
             <label>Room Name <input id="room-name" required maxlength="120"></label>
             <label>Room Type
@@ -377,6 +385,7 @@
             </label>
             <label>Capacity <input id="room-capacity" type="number" min="1" max="10000" placeholder="e.g. 45"></label>
             <label class="check-label"><input type="checkbox" id="room-online"> Online Room</label>
+            <small id="room-meta-note" class="muted field-note" hidden>Room type and capacity need migration v7. Run supabase/migration_v7.sql, then reload.</small>
             <button type="submit" id="room-submit" class="primary">Add Room</button>
             <button type="button" id="room-cancel" hidden>Cancel Edit</button>
           </form>
@@ -385,7 +394,7 @@
         </section>
         <section id="sub-periods" role="tabpanel">
           <h2>Start a Scheduling Period</h2>
-          <form id="period-form" class="grid">
+          <form id="period-form" class="grid editor-only">
             <label>Academic Year <input id="period-year" placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" required></label>
             <label>Semester <select id="period-semester" required><option value="1st">1st</option><option value="2nd">2nd</option><option value="Summer">Summer</option></select></label>
             <label>Starts On <input id="period-start" type="date" required></label>

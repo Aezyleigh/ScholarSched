@@ -20,6 +20,9 @@ let curriculumLoadError = null;
 let periodLoadError = null;
 let currentCurriculumYear = null;
 let currentUsers = [];
+let catalogLimit = 10;      // rows shown in the Course Catalog before "View more"
+let cyLimit = 12;           // courses shown in the Add Courses picker before "View more"
+let editingCourseId = null; // catalog course being edited, so its row can be highlighted
 const SCHOOL_YEAR_LABEL = '2025-2026';   // shown under the ScholarSched title
 let activeYear = null;                    // academic year of the active period, used for data
 
@@ -66,6 +69,8 @@ function roleLabel(role) {
   return { admin: 'Program Head', teacher: 'Teacher' }[role] || role;
 }
 
+const isAdmin = () => currentUser?.role === 'admin';
+
 /* ---------- views ---------- */
 
 function showLogin() {
@@ -105,19 +110,20 @@ async function showApp(user) {
   $('app-view').hidden = false;
   $('user-label').textContent = `${user.name} (${roleLabel(user.role)})`;
 
-  const isAdmin = user.role === 'admin';
-  $('app-tabs').hidden = !isAdmin;
-  $('create-panel').hidden = !isAdmin;
-  document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = !isAdmin));
-  $('staff-list-toggle').hidden = isAdmin;
-  $('staff-weekly-toggle').hidden = isAdmin;
-  $('list-title').textContent = isAdmin ? 'All Schedules' : 'My Published Schedule';
+  const admin = user.role === 'admin';
+  $('app-tabs').hidden = false;
+  $('create-panel').hidden = !admin;
+  document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = !admin));
+  // Editors keep the forms; teachers get read-only tables, reports and lists.
+  document.querySelectorAll('.editor-only').forEach((el) => (el.hidden = !admin));
+  $('staff-list-toggle').hidden = admin;
+  $('staff-weekly-toggle').hidden = admin;
+  $('list-title').textContent = admin ? 'All Schedules' : 'My Published Schedule';
   $('search-input').value = '';
   resetForm();
   showTab('schedules');
 
-  if (isAdmin) await loadLookups();
-  else await loadPeriodLabel();
+  await loadLookups();
   await loadSchedules();
 }
 
@@ -410,22 +416,25 @@ function showSetupAlert(id, type, message) {
 
 function renderSetup() {
   if (!$('room-body')) return;
+  const admin = isAdmin();
   $('room-body').innerHTML = lookups.rooms.map((r) => `
     <tr><td>${esc(r.room_name)}</td>
-    <td>${esc(r.room_type || 'Regular Room')}</td>
-    <td>${r.capacity ? `${esc(r.capacity)} seats` : '<span class="muted">Not set</span>'}</td>
-    <td>${r.is_online ? 'Online' : 'Physical'}</td><td>
+    <td>${caps.roomMeta ? esc(r.room_type || 'Regular Room') : '<span class="muted">—</span>'}</td>
+    <td>${caps.roomMeta ? (r.capacity ? `${esc(r.capacity)} seats` : '<span class="muted">Not set</span>') : '<span class="muted">—</span>'}</td>
+    <td>${r.is_online ? 'Online' : 'Physical'}</td><td>${admin ? `
     <button type="button" data-edit-room="${r.id}">Edit</button>
-    <button type="button" class="danger" data-remove-room="${r.id}">Remove</button></td></tr>`).join('');
-  // Room capacity and type are stored by migration v7.
-  $('room-type').closest('label').hidden = !caps.roomMeta;
-  $('room-capacity').closest('label').hidden = !caps.roomMeta;
+    <button type="button" class="danger" data-remove-room="${r.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
+  // Room capacity and type are stored by migration v7. Keep the inputs visible
+  // but disabled so the feature is discoverable before the migration runs.
+  $('room-type').disabled = !caps.roomMeta;
+  $('room-capacity').disabled = !caps.roomMeta;
+  $('room-meta-note').hidden = caps.roomMeta;
   $('period-body').innerHTML = lookups.periods.map((p) => `
     <tr><td>${esc(p.academic_year)}</td><td>${esc(p.semester)}</td>
-    <td>${esc(p.starts_on || 'Dates not set')} – ${esc(p.ends_on || '')}</td><td>${p.is_active ? 'Active' : 'Closed'}</td><td>
+    <td>${esc(p.starts_on || 'Dates not set')} – ${esc(p.ends_on || '')}</td><td>${p.is_active ? 'Active' : 'Closed'}</td><td>${admin ? `
     <button type="button" data-edit-period="${p.id}">Edit</button>
     ${p.is_active ? '<button type="button" data-close-period>Close</button>' : `<button type="button" data-activate-period="${p.id}">Start</button>`}
-    <button type="button" class="danger" data-remove-period="${p.id}">Remove</button></td></tr>`).join('');
+    <button type="button" class="danger" data-remove-period="${p.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
   $('period-copy').innerHTML = '<option value="">Start empty</option>' + lookups.periods
     .map((p) => `<option value="${p.id}">${esc(p.academic_year)} ${esc(p.semester)}</option>`).join('');
 }
@@ -595,13 +604,21 @@ function renderCurriculum() {
   const programById = new Map(lookups.programs.map((p) => [String(p.id), p]));
   const yearById = new Map(lookups.years.map((y) => [String(y.id), y]));
 
-  $('course-body').innerHTML = subjects.map((s) => `
-    <tr><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
-    <td><button type="button" data-edit-course="${s.id}">Edit</button>
-    <button type="button" class="danger" data-remove-course="${s.id}">Remove</button></td></tr>`).join('');
+  const admin = isAdmin();
+  const catalogTerm = ($('course-search')?.value || '').trim().toLowerCase();
+  const catalogRows = subjects.filter((s) =>
+    !catalogTerm || `${s.subject_code} ${s.subject_name}`.toLowerCase().includes(catalogTerm));
+  const catalogPage = catalogRows.slice(0, catalogLimit);
+  $('course-body').innerHTML = catalogPage.map((s) => `
+    <tr class="${String(s.id) === String(editingCourseId) ? 'is-editing' : ''}"><td>${esc(s.subject_code)}</td><td>${esc(s.subject_name)}</td><td>${esc(s.units)}</td>
+    <td>${admin ? `<button type="button" data-edit-course="${s.id}">Edit</button>
+    <button type="button" class="danger" data-remove-course="${s.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">No course matches that search.</td></tr>';
+  $('course-count').textContent = `${catalogPage.length} of ${catalogRows.length} courses`;
+  $('course-more').hidden = catalogPage.length >= catalogRows.length;
   $('program-body').innerHTML = lookups.programs.map((p) => `
-    <tr><td>${esc(p.program_name)}</td><td><button type="button" data-edit-program="${p.id}">Edit</button>
-    <button type="button" class="danger" data-remove-program="${p.id}">Remove</button></td></tr>`).join('');
+    <tr><td>${esc(p.program_name)}</td><td>${admin ? `<button type="button" data-edit-program="${p.id}">Edit</button>
+    <button type="button" class="danger" data-remove-program="${p.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('');
 
   const versions = curriculumVersionList();
   if (currentCurriculumYear === null) currentCurriculumYear = versions[0] || '';
@@ -618,7 +635,7 @@ function renderCurriculum() {
     const count = lookups.curriculum.filter((c) => c.valid_years === v).length;
     return `<tr><td>${esc(v)}</td><td>${count}</td><td>
       <button type="button" data-open-year="${esc(v)}" ${v === currentCurriculumYear ? 'disabled' : ''}>View</button>
-      <button type="button" class="danger" data-remove-year="${esc(v)}">Remove</button></td></tr>`;
+      ${admin ? `<button type="button" class="danger" data-remove-year="${esc(v)}">Remove</button>` : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="3" class="muted">No curriculum years yet. Add one above, for example 2022-2027.</td></tr>';
 
   const programId = $('cy-program').value;
@@ -640,7 +657,7 @@ function renderCurriculum() {
     return `<tr><td>${esc(subject.subject_code)} — ${esc(subject.subject_name)}</td>
       <td>${esc(level ? level.year_level : 'All Year Levels')}</td><td>${esc(c.semester)}</td>
       <td>${esc(c.valid_years || '—')}</td>
-      <td><button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button></td></tr>`;
+      <td>${admin ? `<button type="button" class="danger" data-remove-curriculum="${c.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`;
   }).join('') || '<tr><td colspan="5" class="muted">No courses yet for this selection. Tick courses on the right to add them.</td></tr>';
 
   const programName = programById.get(String(programId))?.program_name || 'All programs';
@@ -659,7 +676,10 @@ function renderCurriculum() {
   const added = new Set(curriculumRows(programId, levelId, semester).map((c) => String(c.subject_id)));
   const term = $('cy-search').value.trim().toLowerCase();
   const list = subjects.filter((s) => !term || `${s.subject_code} ${s.subject_name}`.toLowerCase().includes(term));
-  $('cy-course-list').innerHTML = list.map((s) => {
+  const page = list.slice(0, cyLimit);
+  $('cy-count').textContent = `${page.length} of ${list.length} courses`;
+  $('cy-more').hidden = page.length >= list.length;
+  $('cy-course-list').innerHTML = page.map((s) => {
     const isAdded = added.has(String(s.id));
     return `<label class="${isAdded ? 'is-added' : ''}">
       <input type="checkbox" value="${s.id}" data-cy-course ${isAdded ? 'checked disabled' : ''}>
@@ -679,6 +699,12 @@ $('course-body').addEventListener('click', (e) => {
   $('course-units').value = s.units;
   $('course-submit').textContent = 'Save Course';
   $('course-cancel').hidden = false;
+  // Bring the edit form to the user instead of making them scroll back up.
+  editingCourseId = String(s.id);
+  renderCurriculum();
+  $('course-form').closest('details').open = true;
+  $('course-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('course-code').focus({ preventScroll: true });
 });
 
 $('course-body').addEventListener('click', async (e) => {
@@ -705,6 +731,8 @@ $('course-cancel').addEventListener('click', () => {
   $('course-submit').textContent = 'Add Course';
   $('course-cancel').hidden = true;
   $('course-alert').hidden = true;
+  editingCourseId = null;
+  renderCurriculum();
 });
 
 $('course-form').addEventListener('submit', async (e) => {
@@ -719,6 +747,7 @@ $('course-form').addEventListener('submit', async (e) => {
     ? await sb.from('subjects').update(values).eq('id', Number(id))
     : await sb.from('subjects').insert(values);
   if (error) return showCurriculumAlert('course-alert', 'error', 'Could not save the course. Check that its code is unique.');
+  editingCourseId = null;
   $('course-form').reset();
   $('course-id').value = '';
   $('course-submit').textContent = 'Add Course';
@@ -834,14 +863,15 @@ async function saveAvailability(teacherId) {
 function renderFaculty() {
   if (!$('teacher-body')) return;
   const deptById = new Map((lookups.departments || []).map((d) => [String(d.id), d.department_name]));
+  const admin = isAdmin();
   $('teacher-body').innerHTML = lookups.teachers.map((t) => `
     <tr><td>${esc(t.teacher_name)}</td>
       <td>${esc(deptById.get(String(t.department_id)) || '—')}</td>
       <td>${esc(t.email || '—')}</td>
       <td>${esc(t.max_load_hours)} hours</td>
       <td>${esc(availabilityText(t.id))}</td>
-      <td><button type="button" data-edit-teacher="${t.id}">Edit</button>
-      <button type="button" class="danger" data-remove-teacher="${t.id}">Remove</button></td></tr>`).join('')
+      <td>${admin ? `<button type="button" data-edit-teacher="${t.id}">Edit</button>
+      <button type="button" class="danger" data-remove-teacher="${t.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`).join('')
     || '<tr><td colspan="6" class="muted">No teachers yet. Add the first one above.</td></tr>';
   $('teacher-dept').closest('label').hidden = !caps.departments;
   const deptSection = $('dept-form').closest('section');
@@ -854,8 +884,8 @@ function renderDepartments() {
   $('dept-body').innerHTML = (lookups.departments || []).map((d) => {
     const count = lookups.teachers.filter((t) => String(t.department_id) === String(d.id)).length;
     return `<tr><td>${esc(d.department_name)}</td><td>${count}</td>
-      <td><button type="button" data-edit-dept="${d.id}">Edit</button>
-      <button type="button" class="danger" data-remove-dept="${d.id}">Remove</button></td></tr>`;
+      <td>${isAdmin() ? `<button type="button" data-edit-dept="${d.id}">Edit</button>
+      <button type="button" class="danger" data-remove-dept="${d.id}">Remove</button>` : '<span class="muted">View only</span>'}</td></tr>`;
   }).join('') || '<tr><td colspan="3" class="muted">No departments yet. Add one above.</td></tr>';
 }
 
@@ -984,7 +1014,10 @@ function curriculumSelection() {
 $('cy-program').addEventListener('change', renderCurriculum);
 $('cy-level').addEventListener('change', renderCurriculum);
 $('cy-semester').addEventListener('change', renderCurriculum);
-$('cy-search').addEventListener('input', renderCurriculum);
+$('cy-search').addEventListener('input', () => { cyLimit = 12; renderCurriculum(); });
+$('cy-more').addEventListener('click', () => { cyLimit += 12; renderCurriculum(); });
+$('course-search').addEventListener('input', () => { catalogLimit = 10; renderCurriculum(); });
+$('course-more').addEventListener('click', () => { catalogLimit += 10; renderCurriculum(); });
 $('cy-year').addEventListener('change', () => {
   currentCurriculumYear = $('cy-year').value;
   renderCurriculum();
@@ -1365,6 +1398,7 @@ function resetForm() {
   $('form-title').textContent = 'Create Schedule';
   $('form-submit').textContent = 'Check Conflicts and Save as Draft';
   $('form-cancel').hidden = true;
+  updateLoadNote();
 }
 
 function updateClassEnd() {
@@ -1383,6 +1417,7 @@ function updateSecondDayOptions() {
   select.innerHTML = `<option value="">No second day</option>${partner ? `<option value="${partner}">${partner}</option>` : ''}`;
   select.disabled = !partner;
   select.value = '';
+  updateLoadNote();
 }
 $('f-day').addEventListener('change', updateSecondDayOptions);
 $('schedule-form').addEventListener('reset', () => setTimeout(updateSecondDayOptions));
@@ -1433,6 +1468,36 @@ function breakIssues(day, start, end) {
 }
 updateSecondDayOptions();
 
+/* Weekly teaching load for the selected teacher, including the class being saved. */
+function teacherLoadInfo() {
+  const teacher = lookups.teachers.find((t) => String(t.id) === String($('f-teacher').value));
+  if (!teacher) return null;
+  const skip = new Set();
+  if (editingId !== null) {
+    if (editingPairId) staffRows.filter((row) => row.schedule_pair_id === editingPairId).forEach((row) => skip.add(String(row.id)));
+    else skip.add(String(editingId));
+  }
+  const current = staffRows
+    .filter((row) => !skip.has(String(row.id)) && String(row.teacher_id) === String(teacher.id))
+    .reduce((sum, row) => sum + hoursOf(row), 0);
+  const days = $('f-day2').value ? 2 : 1;
+  const added = 2.5 * days;
+  return { name: teacher.teacher_name, current, added, days, total: current + added, max: Number(teacher.max_load_hours) };
+}
+
+function updateLoadNote() {
+  const note = $('load-note');
+  if (!note) return;
+  const info = teacherLoadInfo();
+  note.classList.remove('field-warn');
+  if (!info) { note.textContent = ''; return; }
+  const over = info.total > info.max + 0.001;
+  note.textContent = `${round1(info.current)} of ${info.max} hours already scheduled; this ${info.days === 2 ? 'paired class adds 5' : 'class adds 2.5'} hours` + (over ? ' — over the limit.' : '.');
+  if (over) note.classList.add('field-warn');
+}
+
+$('f-teacher').addEventListener('change', updateLoadNote);
+
 function startEdit(id) {
   const s = staffRows.find((r) => r.id === id);
   if (!s) return;
@@ -1458,6 +1523,7 @@ function startEdit(id) {
   $('form-submit').textContent = 'Check Conflicts and Save Changes';
   $('form-cancel').hidden = false;
   $('form-alert').hidden = true;
+  updateLoadNote();
   $('create-panel').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -1483,6 +1549,10 @@ $('schedule-form').addEventListener('submit', async (e) => {
   if (!day) return showFormAlert('error', 'Choose a day for this class.');
   const secondDay = $('f-day2').value;
   const days = secondDay ? [day, secondDay] : [day];
+  const load = teacherLoadInfo();
+  if (load && load.total > load.max + 0.001) {
+    return showFormAlert('error', `${load.name}'s weekly teaching load would be ${round1(load.total)} hours, above the ${load.max}-hour limit. Choose another teacher or reduce the schedule.`);
+  }
   if (editingPairId && days.length !== 2) {
     return showFormAlert('error', 'Keep paired schedules paired. Cancel and create a new schedule to change between single and paired days.');
   }
@@ -1591,7 +1661,12 @@ function availabilityText(teacherId) {
     .map((a) => `${a.day.slice(0, 3)} ${to12h(a.start_time)}—${to12h(a.end_time)}`).join('; ') || 'Not configured';
 }
 function renderReport() {
-  if (!currentUser || currentUser.role !== 'admin') return;
+  if (!currentUser) return;
+  const admin = isAdmin();
+  // Only the Program Head sees every faculty member's load; teachers get their own.
+  $('r-type').querySelector('option[value="faculty-all"]').hidden = !admin;
+  if (!admin && $('r-type').value === 'faculty-all') $('r-type').value = 'faculty';
+  if (!admin && currentUser.teacher_id) $('r-teacher').value = currentUser.teacher_id;
   const type = $('r-type').value;
   $('r-program-wrap').hidden = type !== 'class';
   $('r-year-wrap').hidden = type !== 'class';
@@ -2108,8 +2183,8 @@ async function showStudent() {
 
   // Semester switching needs the extra view columns added by migration v7.
   const semesterField = $('s-semester');
-  semesterField.closest('label').hidden = !caps.semesterViews;
   semesterField.disabled = !caps.semesterViews;
+  $('s-semester-note').hidden = caps.semesterViews;
 
   const withPlaceholder = (label, rows, labelKey) =>
     `<option value="">${label}</option>` +

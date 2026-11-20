@@ -249,3 +249,11 @@ input[type="file"] {
 
 /* The login card stretches its buttons; keep the inline help link compact. */
 .login .link-button { width: auto; display: inline; }
+
+/* ---------- Catalog lists: search, counts and View more ---------- */
+.list-count { margin: 0 0 .4rem; font-size: .85rem; }
+.more-button { width: 100%; margin-top: .5rem; }
+.side-more { width: 100%; margin-top: .5rem; }
+tr.is-editing td { background: var(--green-050, #f2f7f4); }
+tr.is-editing td:first-child { box-shadow: inset 3px 0 0 var(--ui); }
+.field-warn { color: var(--err-text, #a12626); font-weight: 600; }
