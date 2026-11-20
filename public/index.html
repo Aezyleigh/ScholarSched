@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ScholarSched — class schedules for Unida Christian Colleges.">
+  <meta name="theme-color" content="#073d27">
   <title>ScholarSched | Unida Christian Colleges</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/ui-enhancements.css">
 </head>
@@ -29,20 +34,20 @@
           <label>Year level <select id="s-year"></select></label>
           <label>Or search any subject <input type="search" id="s-search" placeholder="Code or name, e.g. CS101"></label>
         </div>
-        <div class="toolbar view-tools">
+        <div class="toolbar view-tools" role="group" aria-label="Choose how to view the schedule">
           <button type="button" id="s-table-view" aria-pressed="true">List</button>
           <button type="button" id="s-week-view" aria-pressed="false">Weekly timetable</button>
           <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="s-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="s-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="s-export-pdf">PDF (.pdf)</button><button type="button" id="s-print">Print</button></div></details>
         </div>
         <div id="student-export-alert" class="alert" role="alert" hidden></div>
-        <div id="student-table-view" class="table-wrap">
+        <div id="student-table-view" class="table-wrap stack-table">
           <table>
             <thead><tr><th>Subject</th><th>Program and year</th><th>Teacher</th><th>Room</th><th>Day</th><th>Time</th></tr></thead>
             <tbody id="student-body"></tbody>
           </table>
         </div>
         <div id="student-weekly-view" class="weekly-view" hidden></div>
-        <p id="student-empty" class="muted">Choose your program and year level.</p>
+        <p id="student-empty" class="muted empty">Choose your program and year level.</p>
       </section>
     </main>
   </div>
@@ -79,14 +84,14 @@
 
     <main class="content">
       <!-- Program Head only -->
-      <nav id="app-tabs" class="tabs" hidden>
-        <button type="button" data-tab="schedules" aria-selected="true">Schedules</button>
-        <button type="button" data-tab="reports" aria-selected="false">Reports</button>
-        <button type="button" class="admin-only" data-tab="curriculum" aria-selected="false">Curriculum</button>
-        <button type="button" class="admin-only" data-tab="setup" aria-selected="false">Rooms &amp; periods</button>
+      <nav id="app-tabs" class="tabs" role="tablist" aria-label="Sections" hidden>
+        <button type="button" role="tab" id="app-tab-schedules" aria-controls="tab-schedules" data-tab="schedules" aria-selected="true">Schedules</button>
+        <button type="button" role="tab" id="app-tab-reports" aria-controls="tab-reports" data-tab="reports" aria-selected="false">Reports</button>
+        <button type="button" role="tab" id="app-tab-curriculum" aria-controls="tab-curriculum" class="admin-only" data-tab="curriculum" aria-selected="false">Curriculum</button>
+        <button type="button" role="tab" id="app-tab-setup" aria-controls="tab-setup" class="admin-only" data-tab="setup" aria-selected="false">Rooms &amp; periods</button>
       </nav>
 
-      <div id="tab-schedules">
+      <div id="tab-schedules" role="tabpanel" aria-labelledby="app-tab-schedules">
         <section id="create-panel" hidden>
           <h2 id="form-title">Create schedule</h2>
           <form id="schedule-form" class="grid">
@@ -103,7 +108,7 @@
               </select><small id="day-error" class="error-text" role="alert"></small></div>
             <label>Start time <input type="time" id="f-start" min="08:00" required></label>
             <label>End time <input type="time" id="f-end" readonly required aria-describedby="duration-note"></label>
-            <p id="duration-note" class="muted">Each class is 2 hours 30 minutes.</p>
+            <p id="duration-note" class="muted field-note">Each class is 2 hours 30 minutes. The end time is filled in for you.</p>
             <div class="form-actions">
               <button type="submit" id="form-submit" class="primary">Check conflicts and save as draft</button>
               <button type="button" id="form-cancel" hidden>Cancel editing</button>
@@ -114,19 +119,19 @@
 
         <section>
           <h2 id="list-title">Schedules</h2>
-          <div class="toolbar view-tools">
+          <div class="toolbar view-tools" role="group" aria-label="Search and choose how to view schedules">
             <label>Search schedules <input type="search" id="search-input" placeholder="Subject, teacher, room, day..."></label>
             <button type="button" id="staff-list-toggle" aria-pressed="true">List</button>
             <button type="button" id="staff-weekly-toggle" aria-pressed="false">Weekly timetable</button>
             <details class="export-menu"><summary>Download / Print</summary><div class="menu-list"><span class="menu-group">Data table</span><button type="button" id="staff-export-csv">Excel / CSV (.csv)</button><span class="menu-group">Calendar</span><button type="button" id="staff-export-ics">Calendar (.ics)</button><span class="menu-group">Document</span><button type="button" id="staff-export-pdf">PDF (.pdf)</button><button type="button" id="staff-print">Print</button></div></details>
           </div>
-          <div class="toolbar admin-only" id="bulk-tools">
+          <div class="toolbar admin-only" id="bulk-tools" role="group" aria-label="Bulk actions">
             <button type="button" id="bulk-publish" class="primary">Publish selected drafts</button>
             <button type="button" id="bulk-unpublish">Unpublish selected</button>
-            <span id="bulk-count" class="muted">0 selected</span>
+            <span id="bulk-count" class="muted" aria-live="polite">0 selected</span>
           </div>
           <div id="staff-export-alert" class="alert" role="alert" hidden></div>
-          <div id="staff-table-view" class="table-wrap">
+          <div id="staff-table-view" class="table-wrap stack-table">
             <table>
               <thead>
                 <tr>
@@ -139,11 +144,11 @@
             </table>
           </div>
           <div id="staff-weekly-view" class="weekly-view" hidden></div>
-          <p id="empty-msg" class="muted" hidden></p>
+          <p id="empty-msg" class="muted empty" hidden></p>
         </section>
       </div>
 
-      <div id="tab-reports" hidden>
+      <div id="tab-reports" role="tabpanel" aria-labelledby="app-tab-reports" hidden>
         <section>
           <h2>Reports</h2>
           <div class="toolbar">
@@ -167,7 +172,7 @@
         </section>
       </div>
 
-      <div id="tab-curriculum" hidden>
+      <div id="tab-curriculum" role="tabpanel" aria-labelledby="app-tab-curriculum" hidden>
         <div class="subtabs" role="tablist" aria-label="Curriculum data" data-subtabs><button type="button" role="tab" data-sub="sub-courses">Courses</button><button type="button" role="tab" data-sub="sub-curriculum">Program curriculum</button><button type="button" role="tab" data-sub="sub-programs">Programs</button><button type="button" role="tab" data-sub="sub-teachers">Teachers</button></div>
         <section id="sub-courses" role="tabpanel">
           <h2>Course catalog</h2>
@@ -239,7 +244,7 @@
         </section>
       </div>
 
-      <div id="tab-setup" hidden>
+      <div id="tab-setup" role="tabpanel" aria-labelledby="app-tab-setup" hidden>
         <div class="subtabs" role="tablist" aria-label="Rooms and periods" data-subtabs><button type="button" role="tab" data-sub="sub-rooms">Rooms</button><button type="button" role="tab" data-sub="sub-periods">Scheduling periods</button></div>
         <section id="sub-rooms" role="tabpanel">
           <h2>Rooms</h2>

@@ -104,8 +104,8 @@ const fname=(d,x)=>`scholarsched-${slug(d.title)}-${new Date().toISOString().sli
 function csv(d){const q=c=>`"${String(c).replace(/"/g,'""')}"`;
  save(new Blob(['\uFEFF'+d.blocks.map(b=>[...(d.blocks.length>1&&b.caption?[[b.caption]]:[]),b.head,...b.rows].map(r=>r.map(q).join(',')).join('\r\n')).join('\r\n\r\n')],{type:'text/csv;charset=utf-8'}),fname(d,'csv'))}
 function pdf(d){
- const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=36,pr=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
- const col=/^#[0-9a-f]{6}$/i.test(pr)?[1,3,5].map(i=>parseInt(pr.substr(i,2),16)):[29,78,137];let y=M;
+ const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=36,pr=getComputedStyle(document.documentElement).getPropertyValue('--green-900').trim();
+ const col=/^#[0-9a-f]{6}$/i.test(pr)?[1,3,5].map(i=>parseInt(pr.substr(i,2),16)):[7,61,39];let y=M;
  doc.setFont('helvetica','bold').setFontSize(15);doc.text('Unida Christian Colleges · ScholarSched',M,y);y+=18;
  doc.setFontSize(12);doc.text(d.title,M,y);y+=14;doc.setFont('helvetica','normal').setFontSize(9);
  doc.text([d.period,d.sub,'Generated '+d.date].filter(Boolean).join('   |   '),M,y);y+=16;
@@ -134,6 +134,17 @@ document.addEventListener('click',e=>{
  if(!d){if(b.id==='s-print'||b.id==='staff-print'){const a=$(m[0]==='s'?'#student-export-alert':'#staff-export-alert');a.textContent='Nothing to print yet.';a.hidden=false}return}
  e.stopImmediatePropagation();e.preventDefault();F[m[1]](d)},true);
 document.addEventListener('click',e=>{$$('details.export-menu[open]').forEach(d=>d.contains(e.target)||d.removeAttribute('open'))});
+
+/* 6. toasts: a visual echo of the inline alerts, so results show wherever the user is.
+   The inline alerts keep role="alert", so this layer stays visual-only to avoid double announcements. */
+const toastRegion=document.createElement('div');
+toastRegion.className='toast-region';toastRegion.setAttribute('aria-hidden','true');
+document.body.append(toastRegion);
+window.toast=(message,type='ok')=>{
+ const text=String(message??'').replace(/\s+/g,' ').trim();if(!text)return;
+ const el=document.createElement('div');el.className='toast '+(type||'ok');el.textContent=text;
+ toastRegion.append(el);
+ setTimeout(()=>{el.classList.add('hide');setTimeout(()=>el.remove(),250)},4200)};
 
 initCombos();days();time();subtabs();
 new MutationObserver(initCombos).observe(document.body,{childList:true,subtree:true});

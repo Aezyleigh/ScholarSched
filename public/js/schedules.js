@@ -65,8 +65,11 @@ function showLogin() {
 
 function showTab(name) {
   ['schedules', 'reports', 'curriculum', 'setup'].forEach((t) => {
-    $(`tab-${t}`).hidden = t !== name;
-    document.querySelector(`[data-tab="${t}"]`).setAttribute('aria-selected', String(t === name));
+    const panel = $(`tab-${t}`);
+    const tab = document.querySelector(`[data-tab="${t}"]`);
+    panel.hidden = t !== name;
+    tab.setAttribute('aria-selected', String(t === name));
+    tab.tabIndex = t === name ? 0 : -1;
   });
   if (name === 'reports') renderReport();
   if (name === 'curriculum') renderCurriculum();
@@ -112,6 +115,10 @@ $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errBox = $('login-error');
   errBox.hidden = true;
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const done = () => { submitBtn.disabled = false; submitBtn.classList.remove('is-busy'); };
+  submitBtn.disabled = true;
+  submitBtn.classList.add('is-busy');
 
   const { data, error } = await sb.auth.signInWithPassword({
     email: $('login-email').value.trim(),
@@ -120,6 +127,7 @@ $('login-form').addEventListener('submit', async (e) => {
   if (error) {
     errBox.textContent = 'Invalid email or password';
     errBox.hidden = false;
+    done();
     return;
   }
 
@@ -128,9 +136,11 @@ $('login-form').addEventListener('submit', async (e) => {
     await sb.auth.signOut();
     errBox.textContent = 'This account has no role assigned. Ask the Program Head.';
     errBox.hidden = false;
+    done();
     return;
   }
   $('login-password').value = '';
+  done();
   showApp(profile);
 });
 
@@ -226,6 +236,7 @@ function showSetupAlert(id, type, message) {
   box.className = `alert ${type}`;
   box.textContent = cleanAlertText(message);
   box.hidden = false;
+  if (window.toast) window.toast(cleanAlertText(message), type);
 }
 
 function renderSetup() {
@@ -375,6 +386,7 @@ function showCurriculumAlert(id, type, message) {
   box.className = `alert ${type}`;
   box.textContent = cleanAlertText(message);
   box.hidden = false;
+  if (window.toast) window.toast(cleanAlertText(message), type);
 }
 
 function renderCurriculum() {
@@ -649,7 +661,9 @@ async function fetchStaffSchedules() {
 }
 
 async function loadSchedules() {
+  $('staff-table-view').classList.add('is-loading');
   const rows = await fetchStaffSchedules();
+  $('staff-table-view').classList.remove('is-loading');
   if (!rows) {
     staffRows = []; selectedScheduleIds.clear();
     $('schedule-body').innerHTML = ''; updateBulkCount();
@@ -675,21 +689,23 @@ function updateBulkCount() {
   $('bulk-unpublish').disabled = selectedScheduleIds.size === 0;
 }
 
-async function bulkChangeStatus(status) {
+async function bulkChangeStatus(status, btn) {
   if (!currentUser || currentUser.role !== 'admin') return;
   const expected = status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
   const ids = staffRows.filter((row) => selectedScheduleIds.has(String(row.id)) && row.status === expected).map((row) => row.id);
   if (!ids.length) return showFormAlert('error', `Select at least one ${expected.toLowerCase()} schedule.`);
   const verb = status === 'PUBLISHED' ? 'publish' : 'unpublish';
   if (!confirm(`${verb[0].toUpperCase() + verb.slice(1)} ${ids.length} selected ${ids.length === 1 ? 'schedule' : 'schedules'}? Paired days update together.`)) return;
+  if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
   const { data, error } = await sb.from('schedules').update({ status }).in('id', ids).eq('status', expected).select('id');
+  if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
   if (error) return showFormAlert('error', `Could not ${verb} the selected schedules. Refresh and try again.`);
   selectedScheduleIds.clear();
   showFormAlert('ok', `${data?.length || 0} selected schedule rows ${status === 'PUBLISHED' ? 'published' : 'returned to draft'}.`);
   await loadSchedules();
 }
-$('bulk-publish').addEventListener('click', () => bulkChangeStatus('PUBLISHED'));
-$('bulk-unpublish').addEventListener('click', () => bulkChangeStatus('DRAFT'));
+$('bulk-publish').addEventListener('click', (e) => bulkChangeStatus('PUBLISHED', e.currentTarget));
+$('bulk-unpublish').addEventListener('click', (e) => bulkChangeStatus('DRAFT', e.currentTarget));
 
 function renderStaffTable() {
   const isAdmin = currentUser.role === 'admin';
@@ -702,13 +718,13 @@ function renderStaffTable() {
 
   $('schedule-body').innerHTML = rows.map((s) => `
     <tr>${isAdmin ? `<td><input type=\"checkbox\" data-select-schedule=\"${s.id}\" aria-label=\"Select ${esc(s.subject_code)}\"></td>` : ''}
-      <td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
-      <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
-      <td>${esc(s.teacher_name)}</td>
-      <td>${esc(s.room_name)}</td>
-      <td>${esc(s.day)}</td>
-      <td>${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
-      <td><span class="badge ${esc(s.status)}">${esc(s.status)}</span></td>
+      <td data-label="Subject">${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
+      <td data-label="Program and year">${esc(s.program_name)}, ${esc(s.year_level)}</td>
+      <td data-label="Teacher">${esc(s.teacher_name)}</td>
+      <td data-label="Room">${esc(s.room_name)}</td>
+      <td data-label="Day">${esc(s.day)}</td>
+      <td data-label="Time">${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
+      <td data-label="Status"><span class="badge ${esc(s.status)}">${esc(s.status)}</span></td>
       ${isAdmin ? `<td class="actions">${actionButtons(s)}</td>` : ''}
     </tr>`).join('');
 
@@ -778,6 +794,7 @@ $('schedule-body').addEventListener('click', async (e) => {
   if (action === 'delete' && !confirm(paired ? 'Delete both draft days in this paired schedule?' : 'Delete this draft schedule?')) return;
 
   btn.disabled = true;
+  btn.classList.add('is-busy');
   const res = await changeStatus(Number(id), action);
   showFormAlert(res.ok ? 'ok' : 'error', res.ok ? res.message : res.error);
   loadSchedules();
@@ -791,6 +808,7 @@ function showFormAlert(type, message, list = []) {
   box.innerHTML = esc(cleanAlertText(message)) +
     (list.length ? `<ul>${list.map((c) => `<li>${esc(cleanAlertText(c))}</li>`).join('')}</ul>` : '');
   box.hidden = false;
+  if (window.toast) window.toast(cleanAlertText(message), type);
 }
 
 async function showConflictSuggestions(args, days) {
@@ -971,6 +989,19 @@ $('schedule-form').addEventListener('submit', async (e) => {
 $('app-tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-tab]');
   if (btn) showTab(btn.dataset.tab);
+});
+$('app-tabs').addEventListener('keydown', (e) => {
+  const tabs = [...$('app-tabs').querySelectorAll('[data-tab]')].filter((tab) => !tab.hidden);
+  const index = tabs.indexOf(document.activeElement);
+  if (index < 0) return;
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  const next = e.key === 'Home' ? tabs[0]
+    : e.key === 'End' ? tabs[tabs.length - 1]
+      : step ? tabs[(index + step + tabs.length) % tabs.length] : null;
+  if (!next) return;
+  e.preventDefault();
+  next.focus();
+  showTab(next.dataset.tab);
 });
 ['r-type', 'r-program', 'r-year', 'r-teacher', 'r-room'].forEach((id) =>
   $(id).addEventListener('change', renderReport));
@@ -1286,7 +1317,9 @@ async function loadStudentSchedule() {
     return;
   }
 
+  $('student-table-view').classList.add('is-loading');
   const { data, error } = await query;
+  $('student-table-view').classList.remove('is-loading');
   if (error) {
     body.innerHTML = ''; studentRows = []; $('student-weekly-view').innerHTML = '';
     empty.textContent = 'Could not load the schedule.';
@@ -1298,12 +1331,12 @@ async function loadStudentSchedule() {
   studentRows = data;
   body.innerHTML = data.map((s) => `
     <tr>
-      <td>${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
-      <td>${esc(s.program_name)}, ${esc(s.year_level)}</td>
-      <td>${esc(s.teacher_name)}</td>
-      <td>${esc(s.room_name)}</td>
-      <td>${esc(s.day)}</td>
-      <td>${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
+      <td data-label="Subject">${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
+      <td data-label="Program and year">${esc(s.program_name)}, ${esc(s.year_level)}</td>
+      <td data-label="Teacher">${esc(s.teacher_name)}</td>
+      <td data-label="Room">${esc(s.room_name)}</td>
+      <td data-label="Day">${esc(s.day)}</td>
+      <td data-label="Time">${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
     </tr>`).join('');
 
   empty.hidden = data.length > 0;
