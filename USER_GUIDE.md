@@ -104,7 +104,7 @@ Reports use schedules in the active period. Check the selected report and filter
 ## For Program Heads: manage accounts
 
 1. Open **Settings**, then **User Management**.
-2. To add an account, enter the full name, email, password, and role. For a teacher, also choose the linked faculty record. Choose **Add Account**; the person can sign in with that email and password right away and appears in the list immediately.
+2. To add an account, enter the full name, email, password, and role. For a teacher, also choose the linked faculty record. Choose **Add Account**; the person can sign in with that email and password right away and appears in the list immediately. No confirmation email is sent, so there is no hourly email limit on how many accounts you can add.
 3. To change an account, choose **Edit** and update the name, role, linked teacher, or email address. The new email is the one they use the next time they sign in. Leave the password field blank when editing.
 4. Choose **Remove** to take away an account's access. The login itself remains in Supabase but has no role, so it cannot reach the app.
 

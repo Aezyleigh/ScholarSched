@@ -2068,6 +2068,9 @@ $('user-cancel').addEventListener('click', () => {
   $('user-teacher-wrap').hidden = false;
 });
 
+/* True when the database has no v11 helper yet, so the older path has to be used. */
+const helperMissing = (error) => /could not find the function|does not exist|schema cache/i.test(error?.message || '');
+
 $('user-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = $('user-id').value;
@@ -2083,47 +2086,48 @@ $('user-form').addEventListener('submit', async (e) => {
   try {
     const email = $('user-email').value.trim().toLowerCase();
     if (id) {
-      if (caps.userEmails) {
-        const { data, error } = await sb.rpc('admin_update_staff_email', { p_user_id: id, p_email: email });
-        if (error || !data?.ok) {
-          return showCurriculumAlert('user-alert', 'error', error?.message || data?.error || 'Could not update the email address.');
-        }
-        values.email = email;
-      }
+      // Call the SQL helper directly so an out-of-date capability probe cannot
+      // silently block an email change.
+      const saved = await sb.rpc('admin_update_staff_email', { p_user_id: id, p_email: email });
+      if (!saved.error && saved.data?.ok) values.email = email;
+      else if (!saved.error) return showCurriculumAlert('user-alert', 'error', saved.data?.error || 'Could not update the email address.');
+      else if (!helperMissing(saved.error)) return showCurriculumAlert('user-alert', 'error', saved.error.message);
       const { error } = await sb.from('profiles').update(values).eq('user_id', id);
       if (error) return showCurriculumAlert('user-alert', 'error', 'Could not save the account.');
       $('user-cancel').click();
-      showCurriculumAlert('user-alert', 'ok', 'Account updated.' + (caps.userEmails ? ' They can sign in with the new email address.' : ''));
+      showCurriculumAlert('user-alert', 'ok', 'Account updated.' + (values.email ? ' They can sign in with the new email address.' : ''));
       await loadUsers();
       return;
     }
     const password = $('user-password').value;
     if (password.length < 6) return showCurriculumAlert('user-alert', 'error', 'Use a password with at least 6 characters.');
 
-    // The SQL helper creates an already-confirmed login, so a new account can sign
-    // in straight away even when Supabase email confirmations are switched on.
-    if (caps.userEmails) {
-      const { data, error } = await sb.rpc('admin_create_staff', {
-        p_name: values.name, p_email: email, p_password: password,
-        p_role: role, p_teacher_id: values.teacher_id,
-      });
-      if (error) {
-        return showCurriculumAlert('user-alert', 'error', /does not exist|schema cache/i.test(error.message)
-          ? 'Run supabase/migration_v11.sql to create accounts from here, then reload.'
-          : `The account was not created. ${error.message}`);
-      }
-      if (!data?.ok) return showCurriculumAlert('user-alert', 'error', data?.error || 'The account was not created.');
+    // The SQL helper creates an already-confirmed login and sends no email, so new
+    // accounts are limited only by the staff who need them — Supabase's own sign-up
+    // path stops after a couple of confirmation emails per hour.
+    const created = await sb.rpc('admin_create_staff', {
+      p_name: values.name, p_email: email, p_password: password,
+      p_role: role, p_teacher_id: values.teacher_id,
+    });
+    if (!created.error) {
+      if (!created.data?.ok) return showCurriculumAlert('user-alert', 'error', created.data?.error || 'The account was not created.');
       $('user-cancel').click();
       showCurriculumAlert('user-alert', 'ok', `Account created for ${values.name}. They can sign in now with ${email} and that password.`);
       await loadUsers();
       return;
     }
+    if (!helperMissing(created.error)) {
+      return showCurriculumAlert('user-alert', 'error', `The account was not created. ${created.error.message}`);
+    }
 
+    // Database without migration v11: fall back to Supabase sign-up.
     const { data, error } = await inviteClient.auth.signUp({ email, password, options: { data: { name: values.name } } });
     if (error) {
-      return showCurriculumAlert('user-alert', 'error', /already|registered|exists/i.test(error.message)
-        ? 'An account already exists for that email.'
-        : `The account was not created. ${error.message}`);
+      return showCurriculumAlert('user-alert', 'error', /rate limit|too many requests|once every/i.test(error.message)
+        ? 'Supabase only allows a couple of confirmation emails per hour, so no account can be added this way right now. Run supabase/migration_v11.sql so accounts are created without email, then reload.'
+        : /already|registered|exists/i.test(error.message)
+          ? 'An account already exists for that email.'
+          : `The account was not created. ${error.message}`);
     }
     if (!data?.user) return showCurriculumAlert('user-alert', 'error', 'The account was not created. Check the email address and try again.');
     if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
