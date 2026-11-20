@@ -68,6 +68,61 @@ function sortSchedules(rows) {
     DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.start_time.localeCompare(b.start_time));
 }
 
+/* ---------- combined classes ----------
+   A combined class is two or more courses meeting together: the same teacher,
+   room, day, start and end time in the same period. They stay separate curriculum
+   rows, but they are one meeting, not a conflict. */
+
+function meetingKey(s) {
+  return [
+    s.teacher_id ?? s.teacher_name,
+    s.room_id ?? s.room_name,
+    s.day,
+    String(s.start_time).slice(0, 5),
+    String(s.end_time).slice(0, 5),
+  ].join('|');
+}
+
+/* Adds combined_with (the other course codes) to every schedule row. */
+function annotateCombined(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = meetingKey(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+  rows.forEach((row) => {
+    const others = groups.get(meetingKey(row)).filter((other) => other !== row);
+    row.combined_with = others.map((other) => other.subject_code);
+    row.combined_meeting = others.length > 0;
+  });
+  return rows;
+}
+
+function meetingGroups(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = meetingKey(row);
+    if (!groups.has(key)) groups.set(key, { key, rows: [] });
+    groups.get(key).rows.push(row);
+  });
+  return [...groups.values()];
+}
+
+/* Combined courses share one meeting, so they add the teacher's hours only once. */
+function teachingHours(rows) {
+  const meetings = new Map();
+  rows.forEach((row) => meetings.set(meetingKey(row), hoursOf(row)));
+  return [...meetings.values()].reduce((sum, hours) => sum + hours, 0);
+}
+
+function subjectCell(s) {
+  const badge = s.combined_with?.length
+    ? ` <span class="badge combined" title="Combined with ${escAttr(s.combined_with.join(', '))}">Combined</span>`
+    : '';
+  return `${esc(s.subject_code)} — ${esc(s.subject_name)}${badge}`;
+}
+
 function roleLabel(role) {
   return { admin: 'Program Head', teacher: 'Teacher' }[role] || role;
 }
@@ -1194,21 +1249,30 @@ async function loadSchedules() {
     $('empty-msg').textContent = 'Could not load schedules. Refresh and try again.'; $('empty-msg').hidden = false;
     return;
   }
-  staffRows = sortSchedules(rows);
+  staffRows = sortSchedules(annotateCombined(rows));
   const validIds = new Set(staffRows.map((row) => String(row.id)));
   selectedScheduleIds = new Set([...selectedScheduleIds].filter((id) => validIds.has(id)));
   renderStaffTable();
+  updateCombineNote();
   if (!$('tab-reports').hidden) renderReport();
+}
+
+/* Search matches combined classes too: a course code, teacher or room shared by
+   the meeting shows the whole meeting. */
+function visibleStaffGroups() {
+  const q = $('search-input').value.trim().toLowerCase();
+  return meetingGroups(staffRows).filter((group) => !q || group.rows
+    .map((row) => [row.subject_code, row.subject_name, row.teacher_name, row.room_name, row.program_name, row.year_level, row.day, row.status, ...(row.combined_with || [])].join(' '))
+    .join(' ').toLowerCase().includes(q));
 }
 
 function updateBulkCount() {
   if (!$('bulk-count')) return;
   $('bulk-count').textContent = `${selectedScheduleIds.size} selected`;
-  const q = $('search-input').value.trim().toLowerCase();
-  const visible = staffRows.filter((row) => !q || [row.subject_code, row.subject_name, row.teacher_name, row.room_name, row.program_name, row.year_level, row.day, row.status].join(' ').toLowerCase().includes(q));
-  const checked = visible.filter((row) => selectedScheduleIds.has(String(row.id))).length;
-  $('select-all-schedules').checked = visible.length > 0 && checked === visible.length;
-  $('select-all-schedules').indeterminate = checked > 0 && checked < visible.length;
+  const groups = visibleStaffGroups();
+  const checked = groups.filter((group) => group.rows.every((row) => selectedScheduleIds.has(String(row.id)))).length;
+  $('select-all-schedules').checked = groups.length > 0 && checked === groups.length;
+  $('select-all-schedules').indeterminate = checked > 0 && checked < groups.length;
   $('bulk-publish').disabled = selectedScheduleIds.size === 0;
   $('bulk-unpublish').disabled = selectedScheduleIds.size === 0;
 }
@@ -1219,7 +1283,7 @@ async function bulkChangeStatus(status, btn) {
   const ids = staffRows.filter((row) => selectedScheduleIds.has(String(row.id)) && row.status === expected).map((row) => row.id);
   if (!ids.length) return showFormAlert('error', `Select at least one ${expected.toLowerCase()} schedule.`);
   const verb = status === 'PUBLISHED' ? 'publish' : 'unpublish';
-  if (!confirm(`${verb[0].toUpperCase() + verb.slice(1)} ${ids.length} selected ${ids.length === 1 ? 'schedule' : 'schedules'}? Paired days update together.`)) return;
+  if (!confirm(`${verb[0].toUpperCase() + verb.slice(1)} ${ids.length} selected ${ids.length === 1 ? 'schedule' : 'schedules'}? Paired days and combined classes update together.`)) return;
   if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
   const { data, error } = await sb.from('schedules').update({ status }).in('id', ids).eq('status', expected).select('id');
   if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
@@ -1233,28 +1297,33 @@ $('bulk-unpublish').addEventListener('click', (e) => bulkChangeStatus('DRAFT', e
 
 function renderStaffTable() {
   const isAdmin = currentUser.role === 'admin';
-  const q = $('search-input').value.trim().toLowerCase();
-  const rows = q
-    ? staffRows.filter((s) =>
-        [s.subject_code, s.subject_name, s.teacher_name, s.room_name, s.program_name, s.year_level, s.day, s.status]
-          .join(' ').toLowerCase().includes(q))
-    : staffRows;
+  const groups = visibleStaffGroups();
 
-  $('schedule-body').innerHTML = rows.map((s) => `
-    <tr>${isAdmin ? `<td><input type=\"checkbox\" data-select-schedule=\"${s.id}\" aria-label=\"Select ${esc(s.subject_code)}\"></td>` : ''}
-      <td data-label="Subject">${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
-      <td data-label="Program and year">${esc(s.program_name)}, ${esc(s.year_level)}</td>
-      <td data-label="Teacher">${esc(s.teacher_name)}</td>
-      <td data-label="Room">${esc(s.room_name)}</td>
-      <td data-label="Day">${esc(s.day)}</td>
-      <td data-label="Time">${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
-      <td data-label="Status"><span class="badge ${esc(s.status)}">${esc(s.status)}</span></td>
-      ${isAdmin ? `<td class="actions">${actionButtons(s)}</td>` : ''}
-    </tr>`).join('');
+  $('schedule-body').innerHTML = groups.map((group) => {
+    const first = group.rows[0];
+    const ids = group.rows.map((row) => row.id);
+    const codes = group.rows.map((row) => row.subject_code).join(', ');
+    const programs = [...new Set(group.rows.map((row) => `${row.program_name}, ${row.year_level}`))];
+    const statuses = [...new Set(group.rows.map((row) => row.status))];
+    const status = statuses
+      .map((value) => `<span class="badge ${esc(value)}">${esc(value)}</span>`).join(' ');
+    return `<tr>
+      ${isAdmin ? `<td><input type="checkbox" data-select-schedule="${ids.join(',')}" aria-label="Select ${escAttr(codes)}"${ids.every((id) => selectedScheduleIds.has(String(id))) ? ' checked' : ''}></td>` : ''}
+      <td data-label="Subject">${group.rows.map(subjectCell).join('<br>')}${group.rows.length > 1 ? '<span class="combined-note">One combined class: same teacher, room and time.</span>' : ''}</td>
+      <td data-label="Program and year">${programs.map(esc).join('<br>')}</td>
+      <td data-label="Teacher">${esc(first.teacher_name)}</td>
+      <td data-label="Room">${esc(first.room_name)}</td>
+      <td data-label="Day">${esc(first.day)}</td>
+      <td data-label="Time">${to12h(first.start_time)} — ${to12h(first.end_time)}</td>
+      <td data-label="Status">${status}</td>
+      ${isAdmin ? `<td class="actions">${actionButtons(group)}</td>` : ''}
+    </tr>`;
+  }).join('');
 
   const empty = $('empty-msg');
-  empty.hidden = rows.length > 0;
+  empty.hidden = groups.length > 0;
   if (!isAdmin) {
+    const rows = groups.flatMap((group) => group.rows);
     $('staff-table-view').hidden = staffView !== 'table';
     $('staff-weekly-view').hidden = staffView !== 'week';
     renderWeeklyGrid(rows, 'staff-weekly-view');
@@ -1271,27 +1340,35 @@ $('search-input').addEventListener('input', renderStaffTable);
 $('schedule-body').addEventListener('change', (e) => {
   const box = e.target.closest('[data-select-schedule]');
   if (!box) return;
-  if (box.checked) selectedScheduleIds.add(box.dataset.selectSchedule);
-  else selectedScheduleIds.delete(box.dataset.selectSchedule);
+  String(box.dataset.selectSchedule).split(',').filter(Boolean).forEach((id) => {
+    if (box.checked) selectedScheduleIds.add(id);
+    else selectedScheduleIds.delete(id);
+  });
   updateBulkCount();
 });
 $('select-all-schedules').addEventListener('change', () => {
-  const q = $('search-input').value.trim().toLowerCase();
-  const visible = staffRows.filter((s) => !q || [s.subject_code, s.subject_name, s.teacher_name, s.room_name, s.program_name, s.year_level, s.day, s.status].join(' ').toLowerCase().includes(q));
-  visible.forEach((s) => $('select-all-schedules').checked ? selectedScheduleIds.add(String(s.id)) : selectedScheduleIds.delete(String(s.id)));
+  visibleStaffGroups().flatMap((group) => group.rows).forEach((s) => {
+    if ($('select-all-schedules').checked) selectedScheduleIds.add(String(s.id));
+    else selectedScheduleIds.delete(String(s.id));
+  });
   renderStaffTable();
 });
 
-function actionButtons(s) {
-  const paired = s.schedule_pair_id ? 'data-paired="true"' : '';
-  const edit = `<button data-id="${s.id}" ${paired} data-action="edit">Edit</button>`;
-  if (s.status === 'DRAFT') {
-    return `${edit}
-            <button data-id="${s.id}" ${paired} data-action="publish" class="primary">Publish</button>
-            <button data-id="${s.id}" ${paired} data-action="delete" class="danger">Delete</button>`;
-  }
+/* Actions apply to the whole combined meeting. Each course keeps its own Edit
+   button, because a course cannot change subject or program for its partner. */
+function actionButtons(group) {
+  const rows = group.rows;
+  const ids = rows.map((s) => s.id);
+  const paired = rows.some((s) => s.schedule_pair_id) ? 'data-paired="true"' : '';
+  const edit = rows.length === 1
+    ? `<button data-ids="${ids[0]}" ${paired} data-action="edit">Edit</button>`
+    : rows.map((s) => `<button data-ids="${s.id}" ${s.schedule_pair_id ? 'data-paired="true"' : ''} data-action="edit">Edit ${esc(s.subject_code)}</button>`).join('');
+  const draftIds = rows.filter((s) => s.status === 'DRAFT').map((s) => s.id);
+  const publishedIds = rows.filter((s) => s.status === 'PUBLISHED').map((s) => s.id);
   return `${edit}
-          <button data-id="${s.id}" ${paired} data-action="unpublish">Unpublish</button>`;
+    ${draftIds.length ? `<button data-ids="${draftIds.join(',')}" ${paired} data-action="publish" class="primary">Publish</button>` : ''}
+    ${publishedIds.length ? `<button data-ids="${publishedIds.join(',')}" ${paired} data-action="unpublish">Unpublish</button>` : ''}
+    ${draftIds.length ? `<button data-ids="${draftIds.join(',')}" ${paired} data-action="delete" class="danger">Delete</button>` : ''}`;
 }
 
 async function changeStatus(id, action) {
@@ -1312,15 +1389,23 @@ async function changeStatus(id, action) {
 $('schedule-body').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-action]');
   if (!btn) return;
-  const { id, action, paired } = btn.dataset;
+  const { action, paired } = btn.dataset;
+  const ids = String(btn.dataset.ids || '').split(',').filter(Boolean).map(Number);
+  if (!ids.length) return;
 
-  if (action === 'edit') return startEdit(Number(id));
-  if (action === 'delete' && !confirm(paired ? 'Delete both draft days in this paired schedule?' : 'Delete this draft schedule?')) return;
+  if (action === 'edit') return startEdit(ids[0]);
+  const groupNote = ids.length > 1 ? ` These ${ids.length} course rows are one combined class, so they change together.` : '';
+  if (action === 'delete' && !confirm((paired ? 'Delete both draft days in this paired schedule?' : 'Delete this draft schedule?') + groupNote)) return;
 
   btn.disabled = true;
   btn.classList.add('is-busy');
-  const res = await changeStatus(Number(id), action);
-  showFormAlert(res.ok ? 'ok' : 'error', res.ok ? res.message : res.error);
+  const results = [];
+  for (const id of ids) results.push(await changeStatus(id, action));
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  const failed = results.find((res) => !res.ok);
+  if (failed) showFormAlert('error', failed.error);
+  else showFormAlert('ok', ids.length > 1 ? `${results.length} combined schedules ${results[0].message.toLowerCase()}.` : results[0].message);
   loadSchedules();
 });
 
@@ -1423,6 +1508,7 @@ function resetForm() {
   $('form-submit').textContent = 'Check Conflicts and Save as Draft';
   $('form-cancel').hidden = true;
   updateLoadNote();
+  updateCombineNote();
 }
 
 function updateClassEnd() {
@@ -1433,6 +1519,36 @@ function updateClassEnd() {
 }
 $('f-start').addEventListener('input', updateClassEnd);
 $('f-start').addEventListener('change', updateClassEnd);
+
+/* Tells the Program Head when this slot is already a combined class, so saving it
+   again adds another course to the same meeting instead of looking like a clash. */
+function updateCombineNote() {
+  const note = $('combine-note');
+  if (!note) return;
+  const teacher = $('f-teacher').value;
+  const room = $('f-room').value;
+  const day = $('f-day').value;
+  const start = $('f-start').value;
+  const end = $('f-end').value;
+  if (!teacher || !room || !day || !start || !end) { note.hidden = true; note.textContent = ''; return; }
+  const skip = new Set();
+  if (editingId !== null) {
+    if (editingPairId) staffRows.filter((row) => row.schedule_pair_id === editingPairId).forEach((row) => skip.add(String(row.id)));
+    else skip.add(String(editingId));
+  }
+  const key = [teacher, room, day, start, end].join('|');
+  const matches = staffRows.filter((row) => !skip.has(String(row.id)) && meetingKey(row) === key);
+  if (!matches.length) { note.hidden = true; note.textContent = ''; return; }
+  const courses = [...new Set(matches.map((row) => `${row.subject_code} (${row.program_name}, ${row.year_level})`))];
+  note.hidden = false;
+  const detail = `<strong>Combined class:</strong> ${esc(courses.join(', '))} ${matches.length === 1 ? 'already meets' : 'already meet'} with this teacher in this room at this time. `;
+  note.innerHTML = detail + (editingId === null
+    ? 'Saving adds this course to the same combined class; it is not a conflict.'
+    : 'Courses in a combined class are edited one at a time; keep the same teacher, room and time to keep it combined.');
+}
+['f-teacher', 'f-room', 'f-day', 'f-start'].forEach((id) => {
+  $(id).addEventListener('change', updateCombineNote);
+});
 
 /* Paired classes meet on Monday + Wednesday or Tuesday + Thursday, at the same time. */
 function updateSecondDayOptions() {
@@ -1463,7 +1579,10 @@ function breakIssues(day, start, end) {
   const group = staffRows
     .filter((row) => row.day === day && !skip.has(String(row.id))
       && String(row.program_id) === $('f-program').value
-      && String(row.year_level_id) === $('f-year').value)
+      && String(row.year_level_id) === $('f-year').value
+      // A course added to an existing combined class is the same meeting, not an overlap.
+      && !(toMin(row.start_time) === start && toMin(row.end_time) === end
+        && String(row.room_id) === $('f-room').value && String(row.teacher_id) === $('f-teacher').value))
     .map((row) => [toMin(row.start_time), toMin(row.end_time)]);
   const at = (minutes) => to12h(minToTime(minutes));
   if (group.some(([s, e]) => s < end && start < e)) {
@@ -1492,7 +1611,8 @@ function breakIssues(day, start, end) {
 }
 updateSecondDayOptions();
 
-/* Weekly teaching load for the selected teacher, including the class being saved. */
+/* Weekly teaching load for the selected teacher, including the class being saved.
+   Combined courses share one meeting, so their hours count once. */
 function teacherLoadInfo() {
   const teacher = lookups.teachers.find((t) => String(t.id) === String($('f-teacher').value));
   if (!teacher) return null;
@@ -1501,12 +1621,15 @@ function teacherLoadInfo() {
     if (editingPairId) staffRows.filter((row) => row.schedule_pair_id === editingPairId).forEach((row) => skip.add(String(row.id)));
     else skip.add(String(editingId));
   }
-  const current = staffRows
-    .filter((row) => !skip.has(String(row.id)) && String(row.teacher_id) === String(teacher.id))
-    .reduce((sum, row) => sum + hoursOf(row), 0);
-  const days = $('f-day2').value ? 2 : 1;
-  const added = 2.5 * days;
-  return { name: teacher.teacher_name, current, added, days, total: current + added, max: Number(teacher.max_load_hours) };
+  const current = teachingHours(staffRows
+    .filter((row) => !skip.has(String(row.id)) && String(row.teacher_id) === String(teacher.id)));
+  const existing = new Set(staffRows.filter((row) => !skip.has(String(row.id))).map(meetingKey));
+  const days = $('f-day2').value ? [$('f-day').value, $('f-day2').value] : [$('f-day').value];
+  const added = days.filter(Boolean).reduce((sum, day) => {
+    const key = [String(teacher.id), $('f-room').value, day, $('f-start').value, $('f-end').value].join('|');
+    return sum + (existing.has(key) ? 0 : 2.5);
+  }, 0);
+  return { name: teacher.teacher_name, current, added, days: days.filter(Boolean).length || 1, total: current + added, max: Number(teacher.max_load_hours) };
 }
 
 function updateLoadNote() {
@@ -1516,7 +1639,9 @@ function updateLoadNote() {
   note.classList.remove('field-warn');
   if (!info) { note.textContent = ''; return; }
   const over = info.total > info.max + 0.001;
-  note.textContent = `${round1(info.current)} of ${info.max} hours already scheduled; this ${info.days === 2 ? 'paired class adds 5' : 'class adds 2.5'} hours` + (over ? ' — over the limit.' : '.');
+  note.textContent = info.added === 0
+    ? `${round1(info.current)} of ${info.max} hours already scheduled; adding a course to this combined class adds no extra hours.`
+    : `${round1(info.current)} of ${info.max} hours already scheduled; this ${info.days === 2 ? 'paired class adds 5' : 'class adds 2.5'} hours` + (over ? ' — over the limit.' : '.');
   if (over) note.classList.add('field-warn');
 }
 
@@ -1548,6 +1673,7 @@ function startEdit(id) {
   $('form-cancel').hidden = false;
   $('form-alert').hidden = true;
   updateLoadNote();
+  updateCombineNote();
   $('create-panel').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -1647,7 +1773,7 @@ $('app-tabs').addEventListener('keydown', (e) => {
 $('r-print').addEventListener('click', () => window.print());
 
 const COLS = {
-  subject: ['Subject', (s) => `${esc(s.subject_code)} — ${esc(s.subject_name)}`],
+  subject: ['Subject', (s) => subjectCell(s)],
   group: ['Program and year', (s) => `${esc(s.program_name)}, ${esc(s.year_level)}`],
   teacher: ['Teacher', (s) => esc(s.teacher_name)],
   room: ['Room', (s) => esc(s.room_name)],
@@ -1716,7 +1842,7 @@ function renderReport() {
     reportTitle = 'All faculty summary'; reportScheduleRows = staffRows;
     const rows = lookups.teachers.map((teacher) => {
       const classes = staffRows.filter((s) => String(s.teacher_id) === String(teacher.id));
-      const load = classes.reduce((n, s) => n + hoursOf(s), 0);
+      const load = teachingHours(classes);
       return `<tr><td>${esc(teacher.teacher_name)}</td><td>${classes.length}</td>
         <td>${round1(load)} / ${esc(teacher.max_load_hours)} hours</td><td>${esc(availabilityText(teacher.id))}</td></tr>`;
     }).join('');
@@ -1728,7 +1854,7 @@ function renderReport() {
     if (!teacher) { out.innerHTML = ''; return; }
     const rows = staffRows.filter((s) => String(s.teacher_id) === String(teacher.id));
     reportTitle = `Faculty schedule: ${teacher.teacher_name}`; reportScheduleRows = rows;
-    const total = rows.reduce((n, s) => n + hoursOf(s), 0);
+    const total = teachingHours(rows);
     out.innerHTML = `<h3>Faculty schedule: ${esc(teacher.teacher_name)}</h3>${meta}` +
       `<p><strong>Teaching load:</strong> ${round1(total)} of ${esc(teacher.max_load_hours)} hours per week</p>` +
       `<p><strong>Availability:</strong> ${esc(availabilityText(teacher.id))}</p>` +
@@ -1752,7 +1878,9 @@ function renderReport() {
     reportTitle = `Room availability: ${room.room_name}`; reportScheduleRows = roomRows;
     const body = DAY_ORDER.map((day) => {
       const dayRows = sortSchedules(roomRows.filter((s) => s.day === day));
-      const occupied = dayRows.map((s) => `${to12h(s.start_time)} — ${to12h(s.end_time)} (${esc(s.subject_code)})`).join('<br>') || '<span class="muted">None</span>';
+      const occupied = meetingGroups(dayRows)
+        .map((group) => `${to12h(group.rows[0].start_time)} — ${to12h(group.rows[0].end_time)} (${group.rows.map((s) => esc(s.subject_code)).join(' + ')})`)
+        .join('<br>') || '<span class="muted">None</span>';
       const free = freeSlots(dayRows).map(slotText).join('<br>') || '<span class="muted">Fully booked</span>';
       return `<tr><td>${day}</td><td>${occupied}</td><td>${free}</td></tr>`;
     }).join('');
@@ -1776,16 +1904,21 @@ function renderWeeklyGrid(rows, targetId) {
     return `<div class="weekly-time" style="grid-column:1;grid-row:${i + 2}">${label}</div>` +
       days.map((_, d) => `<div class="weekly-slot" style="grid-column:${d + 2};grid-row:${i + 2}" aria-hidden="true"></div>`).join('');
   }).join('');
-  const cards = rows.map((s) => {
+  const cards = meetingGroups(rows).map((group) => {
+    const s = group.rows[0];
     const day = days.indexOf(s.day);
     const start = toMin(s.start_time);
     const span = Math.ceil((toMin(s.end_time) - start) / 30);
     const row = Math.floor((start - gridStart) / 30) + 2;
     if (day < 0 || row < 2 || row + span > 26) return '';
-    return `<article class="weekly-class" style="grid-column:${day + 2};grid-row:${row}/span ${span}" title="${esc(s.subject_code)} ${esc(s.start_time)}–${esc(s.end_time)}">
-      <strong>${esc(s.subject_code)} – ${esc(s.subject_name)}</strong><span>${to12h(s.start_time)}–${to12h(s.end_time)}</span>
-      <span>${esc(s.program_name || '')}${s.year_level ? `, ${esc(s.year_level)}` : ''}</span>
-      <span>${esc(s.teacher_name || '')}</span><span>${esc(s.room_name || '')}</span></article>`;
+    const codes = group.rows.map((r) => r.subject_code).join(' + ');
+    const names = group.rows.map((r) => r.subject_name).join(' / ');
+    const programs = [...new Set(group.rows.map((r) => `${r.program_name || ''}${r.year_level ? `, ${r.year_level}` : ''}`))].filter(Boolean).join(' · ');
+    return `<article class="weekly-class" style="grid-column:${day + 2};grid-row:${row}/span ${span}" title="${esc(codes)} ${esc(s.start_time)}–${esc(s.end_time)}">
+      <strong>${esc(codes)} – ${esc(names)}</strong><span>${to12h(s.start_time)}–${to12h(s.end_time)}</span>
+      <span>${esc(programs)}</span>
+      <span>${esc(s.teacher_name || '')}</span><span>${esc(s.room_name || '')}</span>
+      ${group.rows.length > 1 ? '<span>Combined class</span>' : ''}</article>`;
   }).join('');
   grid.innerHTML = rows.length
     ? `<div class="weekly-grid" role="grid" aria-label="Weekly timetable" style="grid-template-columns:64px repeat(6,minmax(140px,1fr));grid-template-rows:2.4rem repeat(24,2.1rem)">
@@ -1809,9 +1942,10 @@ function downloadBlob(content, type, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function scheduleMatrix(rows) {
-  const headers = ['Course code','Course','Program','Year','Teacher','Room','Day','Start','End','Status'];
+  const headers = ['Course code','Course','Program','Year','Teacher','Room','Day','Start','End','Status','Combined with'];
   return [headers, rows.map((s) => [s.subject_code, s.subject_name, s.program_name, s.year_level,
-    s.teacher_name, s.room_name, s.day, to12h(s.start_time), to12h(s.end_time), s.status || 'Published'])];
+    s.teacher_name, s.room_name, s.day, to12h(s.start_time), to12h(s.end_time), s.status || 'Published',
+    (s.combined_with || []).join(', ')])];
 }
 function downloadScheduleCsv(rows, filename) {
   const [headers, data] = scheduleMatrix(rows);
@@ -1890,7 +2024,12 @@ function downloadTimetablePdf(rows, title) {
   doc.line(W - M, top, W - M, bottom);
 
   days.forEach((day, dayIndex) => {
-    const classes = rows.filter((r) => r.day === day).sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+    const classes = meetingGroups(rows.filter((r) => r.day === day))
+      .map((group) => ({
+        ...group.rows[0],
+        subject_code: group.rows.map((r) => r.subject_code).join(' + '),
+      }))
+      .sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
     if (!classes.length) return;
     // Share a day column between classes that overlap in time.
     const lanes = [];
@@ -2149,7 +2288,11 @@ function downloadScheduleIcs(rows, filename, alertId) {
   }
   if (!rows.length) return showSetupAlert(alertId, 'error', 'There are no schedules to export.');
   const until = icsStamp(localClassUtc(currentPeriod.ends_on, '23:59'));
-  const events = rows.map((s) => {
+  const events = meetingGroups(rows).map((group) => {
+    const s = group.rows[0];
+    const codes = group.rows.map((r) => r.subject_code).join(' + ');
+    const names = group.rows.map((r) => r.subject_name).join(' / ');
+    const cohorts = [...new Set(group.rows.map((r) => `${r.program_name || ''} ${r.year_level || ''}`.trim()))].join('; ');
     const day = DAY_ORDER.indexOf(s.day);
     if (day < 0) return '';
     const [year, month, date] = currentPeriod.starts_on.split('-').map(Number);
@@ -2162,8 +2305,8 @@ function downloadScheduleIcs(rows, filename, alertId) {
     const end = icsStamp(localClassUtc(localDate, s.end_time));
     return ['BEGIN:VEVENT', `UID:${s.id}-${currentPeriod.id}@scholarsched`, `DTSTAMP:${icsStamp(new Date())}`,
       `DTSTART:${start}`, `DTEND:${end}`, `RRULE:FREQ=WEEKLY;UNTIL=${until}`,
-      `SUMMARY:${icsEscape(`${s.subject_code} ${s.subject_name}`)}`,
-      `DESCRIPTION:${icsEscape(`${s.program_name || ''} ${s.year_level || ''} | ${s.teacher_name || ''}`)}`,
+      `SUMMARY:${icsEscape(`${codes} ${names}`)}`,
+      `DESCRIPTION:${icsEscape(`${cohorts} | ${s.teacher_name || ''}`)}`,
       `LOCATION:${icsEscape(s.room_name)}`, 'END:VEVENT'].join('\r\n');
   }).filter(Boolean);
   if (!events.length) return showSetupAlert(alertId, 'error', 'No schedule falls within the active period dates.');
@@ -2274,17 +2417,20 @@ async function loadStudentSchedule() {
     return;
   }
 
-  sortSchedules(data);
+  sortSchedules(annotateCombined(data));
   studentRows = data;
-  body.innerHTML = data.map((s) => `
-    <tr>
-      <td data-label="Subject">${esc(s.subject_code)} — ${esc(s.subject_name)}</td>
-      <td data-label="Program and year">${esc(s.program_name)}, ${esc(s.year_level)}</td>
+  body.innerHTML = meetingGroups(data).map((group) => {
+    const s = group.rows[0];
+    const programs = [...new Set(group.rows.map((row) => `${row.program_name}, ${row.year_level}`))];
+    return `<tr>
+      <td data-label="Subject">${group.rows.map(subjectCell).join('<br>')}${group.rows.length > 1 ? '<span class="combined-note">Combined class</span>' : ''}</td>
+      <td data-label="Program and year">${programs.map(esc).join('<br>')}</td>
       <td data-label="Teacher">${esc(s.teacher_name)}</td>
       <td data-label="Room">${esc(s.room_name)}</td>
       <td data-label="Day">${esc(s.day)}</td>
       <td data-label="Time">${to12h(s.start_time)} — ${to12h(s.end_time)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   empty.hidden = data.length > 0;
   $('student-table-view').hidden = studentView !== 'table';

@@ -76,10 +76,13 @@ The schedule form only offers courses assigned to the selected program and year 
 4. Choose a **Start time**. Classes start no earlier than 8:00 AM and last exactly 2 hours 30 minutes; the end time is filled in automatically.
 5. Choose **Check conflicts and save as draft**. New schedules are saved as drafts and are not shown to students or teachers.
 6. If the system reports a conflict, read the message. When suggestions are available, choose a suggested room or start time and submit again.
-7. Find the schedule in the table. Use **Edit** to change it. Use **Publish** when it is ready for students and teachers. Published schedules can be **Unpublished** if they need more changes.
-8. To delete a draft, choose **Delete** and confirm. Published schedules must be unpublished before they can be deleted.
+7. To combine two courses into one class, use the same teacher, room, day and start time for both, in the same semester. The form shows a **Combined class** note when that meeting already exists, and the schedule table then shows the courses together under one time slot.
+8. Find the schedule in the table. Use **Edit** to change it. Use **Publish** when it is ready for students and teachers. Published schedules can be **Unpublished** if they need more changes.
+9. To delete a draft, choose **Delete** and confirm. Published schedules must be unpublished before they can be deleted.
 
 The system checks teacher availability and weekly load, room conflicts, and spacing between classes. The same program and year level and the same teacher need at least 30 minutes between classes. Paired days are managed together.
+
+A combined class is two or more courses meeting together with the same teacher, room, day, start and end time in the same semester. It is allowed and shown as one row in the schedule table: publish, unpublish and delete act on every course in the meeting, while **Edit** changes one course at a time. Combined courses count once toward the teacher's weekly load.
 
 ### Publish or unpublish several schedules
 

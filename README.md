@@ -14,7 +14,9 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
 - **Scheduling rules.** New or edited classes start no earlier than 8:00 AM, last exactly
   2 hours 30 minutes and fit within faculty availability. Classes may span an entire configured break,
   Faculty and the same Program + Year Level need at least 30 minutes between classes.
-  Physical room conflicts and other overlapping classes are blocked.
+  Physical room conflicts and other overlapping classes are blocked. Two courses may share one
+  meeting when the teacher, room, day, time and semester are all the same: that is a combined
+  class, shown once and counted once toward the teacher's load instead of being a conflict.
 - **Draft and publish workflow.** New schedules are saved as private drafts. The Program Head
   publishes them, can unpublish them, and can delete drafts.
 - **Student view without login.** Students choose their Program and Year Level and see only
@@ -40,6 +42,8 @@ For step-by-step instructions for students, teachers, and Program Heads, see [US
   include dates, can be closed or started, and may copy validated schedules as drafts.
 - **Timetable and exports.** Students and teachers can switch between a list and a Mon-Sat
   weekly timetable. Schedule exports include CSV, PDF, and recurring calendar events (.ics).
+  Combined classes appear as one entry with every course code, and exports list the partner
+  courses in a Combined with column.
 - **Bulk publishing and conflict help.** Program Heads can publish/unpublish selected rows; failed
   saves can suggest rooms and start times that pass the active scheduling rules.
 
@@ -84,15 +88,16 @@ ScholarSched/
     ├── migration_v3.sql Faculty availability, curriculum, paired days and validation
     ├── migration_v4.sql Period dates/lifecycle/copy and conflict suggestions
     ├── migration_v5.sql Full-break-spanning class validation
-    ├── migration_v6.sql Shared meetings across programs
+    ├── migration_v6.sql Shared meetings across programs (extended by v9)
     ├── migration_v7.sql Departments, room details, curriculum years, semester views, backup helper
     ├── migration_v8.sql Read-only teacher access and richer teacher schedule rows
+    ├── migration_v9.sql Combined classes: one meeting shared by any courses
     ├── seed.sql          Sample period, programs, subjects, teachers, rooms
     └── users.sql         Links staff logins to roles (run after creating the users)
 ```
 
 
-Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, and v8 in order. Migration v4 adds period dates and
+Apply `schema.sql`, then migrations v2, v3, v4, v5, v6, v7, v8, and v9 in order. Migration v4 adds period dates and
 protected lifecycle/copy/suggestion functions. Existing periods have no dates until a Program Head
 edits them; calendar export requires a complete date range. PDF download uses the pinned jsPDF
 browser bundle from jsDelivr.
@@ -104,6 +109,12 @@ a restore. Until it is run, the app hides those controls and keeps working with 
 Migration v8 lets teachers read courses, faculty, availability, rooms, departments and curriculum
 while keeping every write Program Head only. It also adds program, year, teacher and room ids to
 the teacher schedule view so the read-only report screens work.
+
+Migration v9 makes the combined-class rule explicit: rows with the same teacher, room, day, start
+and end time in the active period are one meeting, whatever their program, year level or course.
+Combined courses are not reported as room, teacher or break conflicts, and the weekly load counts
+the shared meeting once. Until it is run, the app still groups and labels combined classes, but a
+new combined save is validated by the older rules.
 
 ## Security notes
 

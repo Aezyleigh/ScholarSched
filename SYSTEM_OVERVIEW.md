@@ -44,7 +44,8 @@ The implementation should be verified against a disposable Supabase project befo
 | `supabase/migration_v3.sql` | Faculty availability, curriculum assignments, schedule-pair support, v3 validation and triggers. |
 | `supabase/migration_v4.sql` | Period dates/lifecycle, atomic schedule copying, and conflict suggestions. |
 | `supabase/migration_v5.sql` | Allows classes to span a configured break. |
-| `supabase/migration_v6.sql` | Allows different programs to share an exact subject, teacher, room, day, and time. |
+| `supabase/migration_v6.sql` | Allows different programs to share an exact subject, teacher, room, day, and time. Extended by v9. |
+| `supabase/migration_v9.sql` | Treats rows with the same teacher, room, day, start and end time in the active period as one combined class; combined courses are not conflicts and count once toward load. |
 | `supabase/seed.sql` | Sample active period, programs, years, courses, teachers, and rooms. |
 | `supabase/users.sql` | Creates profile-role links for Auth users matched by email. |
 | `README.md` | Feature and setup summary, including migration order and deployment notes. |

@@ -290,3 +290,19 @@ input[type="file"] {
 tr.is-editing td { background: var(--green-050, #f2f7f4); }
 tr.is-editing td:first-child { box-shadow: inset 3px 0 0 var(--ui); }
 .field-warn { color: var(--err-text, #a12626); font-weight: 600; }
+
+/* Combined classes: courses that share one teacher, room, day and time. */
+.badge.combined {
+  background: #eef3ff;
+  color: #1f3a8a;
+  border-color: #c8d6f5;
+  font-weight: 600;
+}
+.combined-note {
+  display: block;
+  margin-top: .15rem;
+  font-size: .78rem;
+  color: var(--muted, #56645c);
+}
+#combine-note { border-left: 3px solid #c8d6f5; padding-left: .6rem; }
+#combine-note strong { color: #1f3a8a; }
