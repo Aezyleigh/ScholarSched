@@ -1,4 +1,4 @@
-/* Enhancement layer: searchable selects, day chips, time picker, export menu, sub-tabs.
+/* Enhancement layer: searchable selects, export menu, sub-tabs.
    All colours come from the brand tokens in styles.css so the controls match the crest palette. */
 
 :root {
@@ -54,94 +54,6 @@
 .combo-list li[aria-selected="true"] { font-weight: 700; color: var(--ui); }
 .combo-list li[aria-disabled="true"],
 .combo-empty { color: var(--muted, #56645c); cursor: default; }
-
-/* ---------- Day chips ---------- */
-.field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .9rem; }
-.field-label { font-weight: 600; font-size: .9rem; color: var(--ui-strong); }
-
-.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
-.chip { position: relative; display: inline-flex; margin: 0; font-weight: 400; }
-.chip input {
-  position: absolute;
-  opacity: 0;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  cursor: pointer;
-}
-.chip span,
-.chip-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.35rem;
-  padding: .4rem .85rem;
-  border: 1px solid var(--ui-line);
-  border-radius: var(--radius-pill, 999px);
-  background: #fff;
-  font-size: .88rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
-}
-.chip span:hover,
-.chip-btn:hover { background: var(--ui-soft); border-color: var(--green-600, #14724a); }
-.chip input:checked + span {
-  background: var(--ui);
-  border-color: var(--ui);
-  color: #fff;
-}
-.chip input:focus-visible + span,
-.chip-btn:focus-visible,
-.slot:focus-visible {
-  outline: 3px solid var(--focus, #0d6b43);
-  outline-offset: 2px;
-}
-.chip-btn { background: var(--ui-soft); color: var(--ui-strong); }
-.error-text { color: var(--err-text, #931b1b); font-size: .85rem; }
-
-/* ---------- Time picker ---------- */
-.time-field { position: relative; display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
-.time-field input { flex: 1 1 7rem; }
-.time-field .step { padding: .4rem .65rem; min-height: 2.4rem; font-variant-numeric: tabular-nums; }
-
-.time-pop {
-  position: absolute;
-  z-index: 40;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  width: min(24rem, 92vw);
-  max-height: 20rem;
-  overflow: auto;
-  padding: .75rem;
-  background: #fff;
-  border: 1px solid var(--ui-line);
-  border-radius: var(--radius, 10px);
-  box-shadow: var(--shadow-lg, 0 24px 48px -28px rgba(7, 61, 39, .45));
-}
-.time-pop h4 {
-  margin: .45rem 0 .35rem;
-  font-size: .75rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--muted, #56645c);
-}
-.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr)); gap: .3rem; }
-.slot {
-  padding: .45rem .3rem;
-  border: 1px solid var(--ui-line);
-  border-radius: var(--radius-sm, 6px);
-  background: #fff;
-  font-size: .85rem;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.slot:hover { background: var(--ui-soft); border-color: var(--green-600, #14724a); }
-.slot[aria-pressed="true"] { background: var(--ui); color: #fff; border-color: var(--ui); }
-#time-summary { font-weight: 600; color: var(--ui); margin: .35rem 0 0; font-variant-numeric: tabular-nums; }
 
 /* ---------- Download menu ---------- */
 .export-menu { position: relative; display: inline-block; }

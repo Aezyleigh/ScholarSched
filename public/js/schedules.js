@@ -21,6 +21,9 @@ let periodLoadError = null;
 let editingCurriculumId = null;
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SECOND_DAY = { Monday: 'Wednesday', Wednesday: 'Monday', Tuesday: 'Thursday', Thursday: 'Tuesday' };
+const BREAK_MIN = 30;   // minutes required between this program and year level's classes
+const BREAK_MAX = 60;   // longest empty gap allowed between them
 const DAY_START = 7 * 60;   // room availability is shown between 7:00 AM ...
 const DAY_END = 20 * 60;    // ... and 8:00 PM
 
@@ -89,7 +92,7 @@ async function showApp(user) {
   document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = !isAdmin));
   $('staff-list-toggle').hidden = isAdmin;
   $('staff-weekly-toggle').hidden = isAdmin;
-  $('list-title').textContent = isAdmin ? 'All schedules' : 'My published schedule';
+  $('list-title').textContent = isAdmin ? 'All Schedules' : 'My Published Schedule';
   $('search-input').value = '';
   resetForm();
   showTab('schedules');
@@ -263,7 +266,7 @@ $('room-body').addEventListener('click', async (e) => {
     $('room-id').value = row.id;
     $('room-name').value = row.room_name;
     $('room-online').checked = row.is_online;
-    $('room-submit').textContent = 'Save room';
+    $('room-submit').textContent = 'Save Room';
     $('room-cancel').hidden = false;
     return;
   }
@@ -283,7 +286,7 @@ $('room-body').addEventListener('click', async (e) => {
 
 $('room-cancel').addEventListener('click', () => {
   $('room-form').reset(); $('room-id').value = '';
-  $('room-submit').textContent = 'Add room'; $('room-cancel').hidden = true; $('room-alert').hidden = true;
+  $('room-submit').textContent = 'Add Room'; $('room-cancel').hidden = true; $('room-alert').hidden = true;
 });
 $('room-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -317,7 +320,7 @@ $('period-body').addEventListener('click', async (e) => {
     $('period-start').value = p.starts_on || '';
     $('period-end').value = p.ends_on || '';
     $('period-copy').disabled = true;
-    $('period-submit').textContent = 'Save period';
+    $('period-submit').textContent = 'Save Period';
     $('period-cancel').hidden = false;
     return;
   }
@@ -347,7 +350,7 @@ $('period-body').addEventListener('click', async (e) => {
 
 $('period-cancel').addEventListener('click', () => {
   editingPeriodId = null; $('period-form').reset(); $('period-copy').disabled = false;
-  $('period-submit').textContent = 'Start period'; $('period-cancel').hidden = true; $('period-alert').hidden = true;
+  $('period-submit').textContent = 'Start Period'; $('period-cancel').hidden = true; $('period-alert').hidden = true;
 });
 $('period-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -425,7 +428,7 @@ $('course-body').addEventListener('click', (e) => {
   $('course-code').value = s.subject_code;
   $('course-name').value = s.subject_name;
   $('course-units').value = s.units;
-  $('course-submit').textContent = 'Save course';
+  $('course-submit').textContent = 'Save Course';
   $('course-cancel').hidden = false;
 });
 
@@ -450,7 +453,7 @@ $('course-body').addEventListener('click', async (e) => {
 $('course-cancel').addEventListener('click', () => {
   $('course-form').reset();
   $('course-id').value = '';
-  $('course-submit').textContent = 'Add course';
+  $('course-submit').textContent = 'Add Course';
   $('course-cancel').hidden = true;
   $('course-alert').hidden = true;
 });
@@ -469,7 +472,7 @@ $('course-form').addEventListener('submit', async (e) => {
   if (error) return showCurriculumAlert('course-alert', 'error', 'Could not save the course. Check that its code is unique.');
   $('course-form').reset();
   $('course-id').value = '';
-  $('course-submit').textContent = 'Add course';
+  $('course-submit').textContent = 'Add Course';
   $('course-cancel').hidden = true;
   showCurriculumAlert('course-alert', 'ok', id ? 'Course updated.' : 'Course added.');
   await loadLookups();
@@ -482,7 +485,7 @@ $('program-body').addEventListener('click', async (e) => {
     if (!row) return;
     $('program-id').value = row.id;
     $('program-name').value = row.program_name;
-    $('program-submit').textContent = 'Save program';
+    $('program-submit').textContent = 'Save Program';
     $('program-cancel').hidden = false;
     return;
   }
@@ -503,7 +506,7 @@ $('program-body').addEventListener('click', async (e) => {
 $('program-cancel').addEventListener('click', () => {
   $('program-form').reset();
   $('program-id').value = '';
-  $('program-submit').textContent = 'Add program';
+  $('program-submit').textContent = 'Add Program';
   $('program-cancel').hidden = true;
   $('program-alert').hidden = true;
 });
@@ -530,7 +533,7 @@ $('teacher-body').addEventListener('click', async (e) => {
     $('teacher-name').value = row.teacher_name;
     $('teacher-email').value = row.email || '';
     $('teacher-load').value = row.max_load_hours;
-    $('teacher-submit').textContent = 'Save teacher';
+    $('teacher-submit').textContent = 'Save Teacher';
     $('teacher-cancel').hidden = false;
     return;
   }
@@ -551,7 +554,7 @@ $('teacher-body').addEventListener('click', async (e) => {
 $('teacher-cancel').addEventListener('click', () => {
   $('teacher-form').reset();
   $('teacher-id').value = '';
-  $('teacher-submit').textContent = 'Add teacher';
+  $('teacher-submit').textContent = 'Add Teacher';
   $('teacher-cancel').hidden = true;
   $('teacher-alert').hidden = true;
 });
@@ -573,19 +576,10 @@ $('teacher-form').addEventListener('submit', async (e) => {
   await loadLookups();
 });
 
-$('curriculum-course-search').addEventListener('input', (e) => {
-  const query = e.target.value.trim().toLocaleLowerCase();
-  const select = $('curriculum-subject');
-  const selected = select.value;
-  fillSelect('curriculum-subject', lookups.subjects.filter((s) =>
-    `${s.subject_code} ${s.subject_name}`.toLocaleLowerCase().includes(query)),
-  (s) => `${s.subject_code} — ${s.subject_name}`, 'Select a course');
-  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
-});
 $('curriculum-cancel').addEventListener('click', () => {
   editingCurriculumId = null;
   $('curriculum-form').reset();
-  $('curriculum-submit').textContent = 'Add to curriculum';
+  $('curriculum-submit').textContent = 'Add to Curriculum';
   $('curriculum-cancel').hidden = true;
   $('curriculum-alert').hidden = true;
 });
@@ -605,7 +599,7 @@ $('curriculum-form').addEventListener('submit', async (e) => {
   const wasEditing = editingCurriculumId !== null;
   editingCurriculumId = null;
   $('curriculum-form').reset();
-  $('curriculum-submit').textContent = 'Add to curriculum';
+  $('curriculum-submit').textContent = 'Add to Curriculum';
   $('curriculum-cancel').hidden = true;
   showCurriculumAlert('curriculum-alert', 'ok', wasEditing ? 'Curriculum entry updated.' : 'Course added to the curriculum.');
   await loadLookups();
@@ -621,7 +615,7 @@ $('curriculum-body').addEventListener('click', async (e) => {
     $('curriculum-program').value = row.program_id;
     $('curriculum-year').value = row.year_level_id;
     $('curriculum-semester').value = row.semester;
-    $('curriculum-submit').textContent = 'Save curriculum';
+    $('curriculum-submit').textContent = 'Save Curriculum';
     $('curriculum-cancel').hidden = false;
     return;
   }
@@ -892,8 +886,8 @@ function resetForm() {
   editingPairId = null;
   $('schedule-form').reset();
 
-  $('form-title').textContent = 'Create schedule';
-  $('form-submit').textContent = 'Check conflicts and save as draft';
+  $('form-title').textContent = 'Create Schedule';
+  $('form-submit').textContent = 'Check Conflicts and Save as Draft';
   $('form-cancel').hidden = true;
 }
 
@@ -905,6 +899,64 @@ function updateClassEnd() {
 }
 $('f-start').addEventListener('input', updateClassEnd);
 $('f-start').addEventListener('change', updateClassEnd);
+
+/* Paired classes meet on Monday + Wednesday or Tuesday + Thursday, at the same time. */
+function updateSecondDayOptions() {
+  const partner = SECOND_DAY[$('f-day').value] || '';
+  const select = $('f-day2');
+  select.innerHTML = `<option value="">No second day</option>${partner ? `<option value="${partner}">${partner}</option>` : ''}`;
+  select.disabled = !partner;
+  select.value = '';
+}
+$('f-day').addEventListener('change', updateSecondDayOptions);
+$('schedule-form').addEventListener('reset', () => setTimeout(updateSecondDayOptions));
+
+function gapText(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return [hours ? `${hours} hour${hours === 1 ? '' : 's'}` : '', rest ? `${rest} minutes` : '']
+    .filter(Boolean).join(' ') || 'no time';
+}
+
+/* Classes of the same program and year level keep a 30–60 minute break on each day. */
+function breakIssues(day, start, end) {
+  const skip = new Set();
+  if (editingId !== null) {
+    if (editingPairId) staffRows.filter((row) => row.schedule_pair_id === editingPairId).forEach((row) => skip.add(String(row.id)));
+    else skip.add(String(editingId));
+  }
+  const group = staffRows
+    .filter((row) => row.day === day && !skip.has(String(row.id))
+      && String(row.program_id) === $('f-program').value
+      && String(row.year_level_id) === $('f-year').value)
+    .map((row) => [toMin(row.start_time), toMin(row.end_time)]);
+  const at = (minutes) => to12h(minToTime(minutes));
+  if (group.some(([s, e]) => s < end && start < e)) {
+    return [`This class overlaps another class for this program and year level on ${day}.`];
+  }
+  const issues = [];
+  const previousEnd = Math.max(-Infinity, ...group.filter(([, e]) => e <= start).map(([, e]) => e));
+  const nextStart = Math.min(Infinity, ...group.filter(([s]) => s >= end).map(([s]) => s));
+  if (Number.isFinite(previousEnd)) {
+    const gap = start - previousEnd;
+    if (gap < BREAK_MIN) {
+      issues.push(`The class before this one on ${day} ends at ${at(previousEnd)}. Start at ${at(previousEnd + BREAK_MIN)} or later so the break is at least 30 minutes.`);
+    } else if (gap > BREAK_MAX) {
+      issues.push(`Starting ${gapText(gap)} after the ${at(previousEnd)} class on ${day} leaves too much empty time. Start between ${at(previousEnd + BREAK_MIN)} and ${at(previousEnd + BREAK_MAX)}.`);
+    }
+  }
+  if (Number.isFinite(nextStart)) {
+    const gap = nextStart - end;
+    if (gap < BREAK_MIN) {
+      issues.push(`The next class on ${day} starts at ${at(nextStart)}. Finish at least 30 minutes before it, so start at ${at(nextStart - 150 - BREAK_MIN)} or earlier.`);
+    } else if (gap > BREAK_MAX) {
+      issues.push(`This time leaves ${gapText(gap)} empty before the ${at(nextStart)} class on ${day}. Start between ${at(nextStart - 150 - BREAK_MAX)} and ${at(nextStart - 150 - BREAK_MIN)}.`);
+    }
+  }
+  return issues;
+}
+updateSecondDayOptions();
+
 function startEdit(id) {
   const s = staffRows.find((r) => r.id === id);
   if (!s) return;
@@ -919,11 +971,13 @@ function startEdit(id) {
   const pairedDays = editingPairId
     ? staffRows.filter((r) => r.schedule_pair_id === editingPairId).map((r) => r.day).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
     : [];
-  $('f-day').value = pairedDays.length === 2 ? pairedDays.join('|') : s.day;
+  $('f-day').value = s.day;
+  updateSecondDayOptions();
+  $('f-day2').value = pairedDays.length === 2 ? (pairedDays.find((d) => d !== s.day) || '') : '';
   $('f-start').value = s.start_time.slice(0, 5);
   updateClassEnd();
-  $('form-title').textContent = `Edit schedule: ${s.subject_code}`;
-  $('form-submit').textContent = 'Check conflicts and save changes';
+  $('form-title').textContent = `Edit Schedule: ${s.subject_code}`;
+  $('form-submit').textContent = 'Check Conflicts and Save Changes';
   $('form-cancel').hidden = false;
   $('form-alert').hidden = true;
   $('create-panel').scrollIntoView({ behavior: 'smooth' });
@@ -942,9 +996,17 @@ $('schedule-form').addEventListener('submit', async (e) => {
     return showFormAlert('error', 'Each class must be exactly 2 hours 30 minutes. Choose a valid start time; the end time is calculated automatically.');
   }
 
-  const days = $('f-day').value.split('|');
+  const day = $('f-day').value;
+  if (!day) return showFormAlert('error', 'Choose a day for this class.');
+  const secondDay = $('f-day2').value;
+  const days = secondDay ? [day, secondDay] : [day];
   if (editingPairId && days.length !== 2) {
     return showFormAlert('error', 'Keep paired schedules paired. Cancel and create a new schedule to change between single and paired days.');
+  }
+  const startMinute = toMin($('f-start').value);
+  const breakProblems = days.flatMap((d) => breakIssues(d, startMinute, startMinute + 150));
+  if (breakProblems.length) {
+    return showFormAlert('error', 'Adjust the break between classes:', breakProblems);
   }
   const args = {
     p_subject_id: Number($('f-subject').value),
